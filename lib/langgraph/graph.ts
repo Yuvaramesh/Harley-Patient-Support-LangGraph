@@ -22,43 +22,42 @@ import { routeAgent, shouldSendEmail } from "../langgraph/edges";
  */
 export function buildHealthcareGraph() {
   // Create the graph builder with our state schema
-  const graphBuilder = new StateGraph(HealthcareGraphState);
-
-  // Add all nodes
-  graphBuilder.addNode("supervisor", supervisorNode);
-  graphBuilder.addNode("extract_severity", severityNode);
-  graphBuilder.addNode("clinical_agent", clinicalNode);
-  graphBuilder.addNode("emergency_agent", emergencyNode);
-  graphBuilder.addNode("personal_agent", personalNode);
-  graphBuilder.addNode("faq_agent", faqNode);
-  graphBuilder.addNode("save_to_database", saveToDatabaseNode);
-  graphBuilder.addNode("send_email", emailNotificationNode);
-  graphBuilder.addNode("update_history", updateHistoryNode);
-
-  // Define the graph flow
-  // START -> supervisor -> extract_severity -> [route to agent]
-  graphBuilder.addEdge(START, "supervisor");
-  graphBuilder.addEdge("supervisor", "extract_severity");
+  const graphBuilder = new StateGraph(HealthcareGraphState)
+    // Add all nodes
+    .addNode("supervisor", supervisorNode)
+    .addNode("extract_severity", severityNode)
+    .addNode("clinical_agent", clinicalNode)
+    .addNode("emergency_agent", emergencyNode)
+    .addNode("personal_agent", personalNode)
+    .addNode("faq_agent", faqNode)
+    .addNode("save_to_database", saveToDatabaseNode)
+    .addNode("send_email", emailNotificationNode)
+    .addNode("update_history", updateHistoryNode)
+    // Define the graph flow
+    // START -> supervisor -> extract_severity -> [route to agent]
+    .addEdge(START, "supervisor")
+    .addEdge("supervisor", "extract_severity");
 
   // Conditional routing from extract_severity to appropriate agent
-  graphBuilder.addConditionalEdges("extract_severity", routeAgent, {
-    emergency_agent: "emergency_agent",
-    clinical_agent: "clinical_agent",
-    personal_agent: "personal_agent",
-    faq_agent: "faq_agent",
-  });
+  graphBuilder.addConditionalEdges("extract_severity", routeAgent, [
+    "emergency_agent",
+    "clinical_agent",
+    "personal_agent",
+    "faq_agent",
+  ]);
 
   // All agents -> save_to_database
-  graphBuilder.addEdge("emergency_agent", "save_to_database");
-  graphBuilder.addEdge("clinical_agent", "save_to_database");
-  graphBuilder.addEdge("personal_agent", "save_to_database");
-  graphBuilder.addEdge("faq_agent", "save_to_database");
+  graphBuilder
+    .addEdge("emergency_agent", "save_to_database")
+    .addEdge("clinical_agent", "save_to_database")
+    .addEdge("personal_agent", "save_to_database")
+    .addEdge("faq_agent", "save_to_database");
 
   // Conditional email notification
-  graphBuilder.addConditionalEdges("save_to_database", shouldSendEmail, {
-    send_email: "send_email",
-    update_history: "update_history",
-  });
+  graphBuilder.addConditionalEdges("save_to_database", shouldSendEmail, [
+    "send_email",
+    "update_history",
+  ]);
 
   // send_email -> update_history
   graphBuilder.addEdge("send_email", "update_history");

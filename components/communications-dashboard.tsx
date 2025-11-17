@@ -7,7 +7,7 @@ import { AlertCircle, CheckCircle, Clock, MessageSquare } from "lucide-react";
 
 interface Communication {
   _id: string;
-  type: "clinical" | "genetic" | "generic" | "emergency";
+  type: "clinical" | "personal" | "generic_faq" | "emergency";
   question: string;
   answer: string;
   severity?: string;
@@ -72,7 +72,7 @@ export function CommunicationsDashboard({
         return "destructive";
       case "clinical":
         return "default";
-      case "genetic":
+      case "generic_faq":
         return "secondary";
       default:
         return "outline";
@@ -91,8 +91,8 @@ export function CommunicationsDashboard({
             "all",
             "emergency",
             "clinical",
-            "genetic",
-            "generic",
+            "generic_faq",
+            "personal",
             "pending",
           ].map((f) => (
             <button

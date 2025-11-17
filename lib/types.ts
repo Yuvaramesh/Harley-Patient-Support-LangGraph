@@ -35,7 +35,7 @@ export interface Patient {
 export interface Communication {
   _id?: ObjectId;
   patientId: string;
-  type: "clinical" | "personal" | "generic" | "emergency";
+  type: "clinical" | "personal" | "generic_faq" | "emergency";
   question: string;
   answer: string;
   severity?: string;

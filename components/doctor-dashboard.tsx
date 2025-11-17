@@ -98,7 +98,7 @@ export function DoctorDashboard({ doctorEmail }: DoctorDashboardProps) {
         return "bg-red-600 text-white";
       case "clinical":
         return "bg-blue-600 text-white";
-      case "genetic":
+      case "personal":
         return "bg-purple-600 text-white";
       default:
         return "bg-gray-600 text-white";
@@ -206,8 +206,8 @@ export function DoctorDashboard({ doctorEmail }: DoctorDashboardProps) {
               <option value="all">All Types</option>
               <option value="emergency">Emergency</option>
               <option value="clinical">Clinical</option>
-              <option value="genetic">Genetic</option>
-              <option value="generic">Generic</option>
+              <option value="personal">Personal</option>
+              <option value="generic_faq">Generic_FAQ</option>
             </select>
           </div>
 
