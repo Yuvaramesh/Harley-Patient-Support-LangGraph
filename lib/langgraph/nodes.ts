@@ -80,6 +80,8 @@ export async function clinicalNode(
 /**
  * Node 4: Emergency Protocol
  */
+// lib/langgraph/nodes.ts - Update the emergencyNode function
+
 export async function emergencyNode(
   state: HealthcareGraphStateType
 ): Promise<Partial<HealthcareGraphStateType>> {
@@ -96,10 +98,11 @@ export async function emergencyNode(
     emergencyMessage: emergency.message,
     emergencyNumber: emergency.emergencyNumber,
     nearbyClinicLocations: emergency.nearbyClinicLocations,
+    needsLocation: emergency.needsLocation,
+    clinicInfo: emergency.clinicInfo,
     severity: "critical",
   };
 }
-
 /**
  * Node 5: Personal Agent
  */

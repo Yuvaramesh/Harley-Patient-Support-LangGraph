@@ -8,6 +8,26 @@ import { retryWithBackoff } from "../retry-utility";
 const genai = new GoogleGenerativeAI(process.env.NEXT_PUBLIC_GEMINI_API_KEY!);
 const model = genai.getGenerativeModel({ model: "gemini-2.5-flash" });
 
+/**
+ * Remove markdown formatting from text
+ */
+function cleanMarkdown(text: string): string {
+  return text
+    .replace(/(\*\*|__)(.*?)\1/g, "$2")
+    .replace(/([*_])(.*?)\1/g, "$2")
+    .replace(/~~(.*?)~~/g, "$1")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/^#{1,6}\s+/gm, "")
+    .replace(/^[-*_]{3,}\s*$/gm, "")
+    .replace(/^>\s+/gm, "")
+    .replace(/^[\s]*[-*+]\s+/gm, "  ")
+    .replace(/^[\s]*\d+\.\s+/gm, "  ")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/!\[([^\]]*)\]\([^)]+\)/g, "$1")
+    .replace(/ {2,}/g, " ")
+    .trim();
+}
+
 export async function personalAgent(state: ChatState): Promise<{
   answer: string;
   needsEmail: boolean;
@@ -76,7 +96,8 @@ Create ONE flowing paragraph that includes:
 - The total number of interactions (${conversationHistory.length})
 
 Requirements:
-- Write ONLY ONE paragraph (no bullet points, no numbered lists, no line breaks)
+- Write ONLY ONE paragraph (no bullet points, no numbered lists, no line breaks within the paragraph)
+- Use plain text with NO markdown formatting (no asterisks, underscores, or any markdown symbols)
 - Keep it clear, empathetic, and conversational
 - Maximum 150-200 words
 - Flow naturally from one point to the next`;
@@ -90,7 +111,8 @@ Requirements:
           1000
         );
 
-        const summary = response.response.text();
+        const rawSummary = response.response.text();
+        const summary = cleanMarkdown(rawSummary);
 
         return {
           answer: `${summary}\n\nWould you like details about any specific conversation?`,
@@ -141,6 +163,8 @@ Provide a helpful, personalized response. If the query is about:
 - Previous conversations: Ask for their email if not provided
 - General personal assistance: Provide relevant help
 
+IMPORTANT: Write in plain text with NO markdown formatting. Do not use asterisks, underscores, dashes, or any other markdown symbols.
+
 Keep the response warm, personal, and helpful.`;
 
   try {
@@ -152,8 +176,11 @@ Keep the response warm, personal, and helpful.`;
       1000
     );
 
+    const rawAnswer = response.response.text();
+    const cleanAnswer = cleanMarkdown(rawAnswer);
+
     return {
-      answer: response.response.text(),
+      answer: cleanAnswer,
       needsEmail: false,
     };
   } catch (error) {

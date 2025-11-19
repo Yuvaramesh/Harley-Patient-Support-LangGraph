@@ -7,3 +7,4 @@ export {
 export { clinicalAgent, emergencyProtocol } from "./clinical-agent";
 export { personalAgent } from "./personal-agent";
 export { faqAgent } from "./faq-agent";
+export { locationAgent } from "./location-agent";

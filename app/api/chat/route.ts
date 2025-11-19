@@ -2,7 +2,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { runHealthcareGraph } from "@/lib/langgraph/graph";
 import type { ChatMessage } from "@/lib/types";
-
 export async function POST(request: NextRequest) {
   try {
     const { patientId, email, query, chatHistory } = await request.json();
@@ -53,7 +52,9 @@ export async function POST(request: NextRequest) {
       response = {
         message: result.emergencyMessage || result.answer,
         emergencyNumber: result.emergencyNumber,
-        nearbyClinicLocations: result.nearbyClinicLocations,
+        nearbyClinicLocations: result.nearbyClinicLocations || [],
+        needsLocation: result.needsLocation,
+        clinicInfo: result.clinicInfo,
       };
     } else if (result.agent_type === "clinical") {
       response = {
@@ -91,9 +92,6 @@ export async function POST(request: NextRequest) {
   }
 }
 
-/**
- * Optional: Add a GET endpoint to check API health
- */
 export async function GET() {
   return NextResponse.json({
     status: "healthy",

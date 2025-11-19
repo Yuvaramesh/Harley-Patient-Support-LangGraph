@@ -2,10 +2,6 @@
 import { Annotation } from "@langchain/langgraph";
 import type { ChatMessage } from "../types";
 
-/**
- * Define the state schema for the healthcare multi-agent graph
- * This state will be passed between all nodes in the graph
- */
 export const HealthcareGraphState = Annotation.Root({
   // Patient identification
   patientId: Annotation<string>,
@@ -52,6 +48,12 @@ export const HealthcareGraphState = Annotation.Root({
     reducer: (current, update) => update ?? current,
   }),
   nearbyClinicLocations: Annotation<string[] | undefined>({
+    reducer: (current, update) => update ?? current,
+  }),
+  needsLocation: Annotation<boolean | undefined>({
+    reducer: (current, update) => update ?? current,
+  }),
+  clinicInfo: Annotation<string | undefined>({
     reducer: (current, update) => update ?? current,
   }),
 

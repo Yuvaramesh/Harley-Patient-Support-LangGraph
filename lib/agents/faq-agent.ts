@@ -6,6 +6,26 @@ import { retryWithBackoff } from "../retry-utility";
 const genai = new GoogleGenerativeAI(process.env.NEXT_PUBLIC_GEMINI_API_KEY!);
 const model = genai.getGenerativeModel({ model: "gemini-2.5-flash" });
 
+/**
+ * Remove markdown formatting from text
+ */
+function cleanMarkdown(text: string): string {
+  return text
+    .replace(/(\*\*|__)(.*?)\1/g, "$2")
+    .replace(/([*_])(.*?)\1/g, "$2")
+    .replace(/~~(.*?)~~/g, "$1")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/^#{1,6}\s+/gm, "")
+    .replace(/^[-*_]{3,}\s*$/gm, "")
+    .replace(/^>\s+/gm, "")
+    .replace(/^[\s]*[-*+]\s+/gm, "  ")
+    .replace(/^[\s]*\d+\.\s+/gm, "  ")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/!\[([^\]]*)\]\([^)]+\)/g, "$1")
+    .replace(/ {2,}/g, " ")
+    .trim();
+}
+
 const FAQ_DATABASE = [
   {
     keywords: ["diabetes", "blood sugar", "glucose"],
@@ -45,7 +65,14 @@ export async function faqAgent(state: ChatState): Promise<string> {
 
 Query: "${state.query}"
 
-Important: This is general information only, not medical advice. Recommend consulting a healthcare provider for personal medical concerns.`;
+Important guidelines:
+- Write in plain text with NO markdown formatting (no asterisks, underscores, bold, italic, etc.)
+- Organize information in clear paragraphs with natural line breaks
+- When listing items, use simple indentation without bullet symbols
+- This is general information only, not medical advice
+- Recommend consulting a healthcare provider for personal medical concerns
+
+Keep the response professional, clear, and easy to read.`;
 
   try {
     const response = await retryWithBackoff(
@@ -56,7 +83,10 @@ Important: This is general information only, not medical advice. Recommend consu
       1000
     );
 
-    return response.response.text();
+    const rawAnswer = response.response.text();
+    const cleanAnswer = cleanMarkdown(rawAnswer);
+
+    return cleanAnswer;
   } catch (error) {
     console.error("FAQ agent error after retries:", error);
 
