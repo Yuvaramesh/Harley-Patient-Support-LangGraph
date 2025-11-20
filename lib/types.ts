@@ -5,6 +5,7 @@ export interface ChatMessage {
   content: string;
   timestamp: Date;
 }
+
 export interface Doctor {
   dr_email?: string;
 }
@@ -18,6 +19,7 @@ export interface ChatState {
   }>;
   patientId?: string;
   email?: string;
+  answer?: string; // Added for follow-up checks
 }
 
 export interface Patient {
@@ -39,7 +41,7 @@ export interface Communication {
   _id?: string;
   patientId: string;
   patientEmail?: string;
-  type: "clinical" | "faq" | "personal" | "emergency"; // Added communication type enum
+  type: "clinical" | "faq" | "personal" | "emergency";
   question?: string;
   answer?: string;
   summary?: string;
@@ -53,8 +55,8 @@ export interface Communication {
   readBy?: string[];
   notes?: string;
   followUpRequired?: boolean;
-  sentToPatient?: boolean; // Track if summary sent to patient (false for emergency)
-  sentToDoctor?: boolean; // Track if summary sent to doctor
+  sentToPatient?: boolean;
+  sentToDoctor?: boolean;
 }
 
 export interface ChatHistory {
@@ -65,6 +67,9 @@ export interface ChatHistory {
   messages: ChatMessage[];
   summary?: string;
   summaryId?: ObjectId;
+  communicationType?: "clinical" | "faq" | "personal" | "emergency"; // Added this field
+  severity?: "low" | "medium" | "high" | "critical"; // Added this field
+  initialMessage?: string; // Added this field
   createdAt: Date;
   status: "active" | "completed" | "archived";
 }

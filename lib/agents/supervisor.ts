@@ -86,6 +86,11 @@ Examples:
 }
 
 export async function shouldAskFollowUp(state: ChatState): Promise<boolean> {
+  // If no answer is available yet, we can't determine if follow-up is needed
+  if (!state.answer) {
+    return false;
+  }
+
   const prompt = `Based on this conversation:
 Query: "${state.query}"
 Answer: "${state.answer}"
