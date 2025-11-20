@@ -5,7 +5,6 @@ export interface ChatMessage {
   content: string;
   timestamp: Date;
 }
-
 export interface Doctor {
   dr_email?: string;
 }
@@ -19,7 +18,7 @@ export interface ChatState {
   }>;
   patientId?: string;
   email?: string;
-  answer?: string; // Added for follow-up checks
+  answer?: string; // Change from 'answer: string;' to 'answer?: string;'
 }
 
 export interface Patient {
@@ -36,9 +35,8 @@ export interface Patient {
   createdAt: Date;
   updatedAt: Date;
 }
-
 export interface Communication {
-  _id?: string;
+  _id?: ObjectId; // Change from string to ObjectId
   patientId: string;
   patientEmail?: string;
   type: "clinical" | "faq" | "personal" | "emergency";
@@ -67,9 +65,9 @@ export interface ChatHistory {
   messages: ChatMessage[];
   summary?: string;
   summaryId?: ObjectId;
-  communicationType?: "clinical" | "faq" | "personal" | "emergency"; // Added this field
-  severity?: "low" | "medium" | "high" | "critical"; // Added this field
-  initialMessage?: string; // Added this field
+  communicationType?: "clinical" | "faq" | "personal" | "emergency"; // Add this line
+  severity?: "low" | "medium" | "high" | "critical"; // Add this if not present
+  initialMessage?: string; // Add this if not present
   createdAt: Date;
   status: "active" | "completed" | "archived";
 }

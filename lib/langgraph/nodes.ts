@@ -283,7 +283,7 @@ export async function emailNotificationNode(
           "communications"
         );
         await commsCollection.updateOne(
-          { id: new ObjectId(state.communicationId) },
+          { _id: new ObjectId(state.communicationId) },
           { $set: { emailSent: true } }
         );
       }
