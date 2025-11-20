@@ -16,7 +16,7 @@ export const HealthcareGraphState = Annotation.Root({
   }),
 
   // User email (optional)
-  user_email: Annotation<string | undefined>({
+  email: Annotation<string | undefined>({
     reducer: (current, update) => update ?? current,
   }),
 
@@ -64,6 +64,20 @@ export const HealthcareGraphState = Annotation.Root({
   conversationHistory: Annotation<any[] | undefined>({
     reducer: (current, update) => update ?? current,
   }),
+  personalData: Annotation<
+    | {
+        email?: string;
+        patientId?: string;
+        name?: string;
+        age?: number;
+        medicalHistory?: string[];
+        emergencyContact?: string;
+        emergencyNumber?: string;
+      }
+    | undefined
+  >({
+    reducer: (current, update) => update ?? current,
+  }),
 
   // Context chunks (if using RAG)
   context_chunks: Annotation<string[] | undefined>({
@@ -78,6 +92,13 @@ export const HealthcareGraphState = Annotation.Root({
 
   // Database record ID
   communicationId: Annotation<string | undefined>({
+    reducer: (current, update) => update ?? current,
+  }),
+
+  // Communication type field to track clinical/faq/personal/emergency
+  communicationType: Annotation<
+    "clinical" | "faq" | "personal" | "emergency" | undefined
+  >({
     reducer: (current, update) => update ?? current,
   }),
 });

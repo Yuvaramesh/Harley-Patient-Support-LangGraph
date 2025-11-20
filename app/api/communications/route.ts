@@ -6,6 +6,8 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const patientId = searchParams.get("patientId");
+    const userRole = searchParams.get("userRole"); // "patient" or "doctor"
+    const communicationType = searchParams.get("type"); // "clinical", "faq", "personal", "emergency"
 
     if (!patientId) {
       return NextResponse.json(
@@ -17,8 +19,22 @@ export async function GET(request: NextRequest) {
     const commsCollection = await getCollection<Communication>(
       "communications"
     );
+
+    // Build query based on role and communication type
+    const query: any = { patientId };
+
+    if (userRole === "patient") {
+      query.sentToPatient = true;
+    } else if (userRole === "doctor") {
+      query.sentToDoctor = true;
+    }
+
+    if (communicationType && communicationType !== "all") {
+      query.type = communicationType;
+    }
+
     const communications = await commsCollection
-      .find({ patientId })
+      .find(query)
       .sort({ createdAt: -1 })
       .toArray();
 

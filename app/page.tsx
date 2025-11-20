@@ -6,21 +6,55 @@ import { useRouter } from "next/navigation";
 import { ChatInterface } from "@/components/chat-interface";
 import { CommunicationsDashboard } from "@/components/communications-dashboard";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { User, Stethoscope } from "lucide-react";
+import { User, Stethoscope, Loader2 } from "lucide-react";
 
 export default function Home() {
   const [patientId, setPatientId] = useState("");
   const [email, setEmail] = useState("");
+  const [name, setName] = useState("");
+  const [contact, setContact] = useState("");
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [inputEmail, setInputEmail] = useState("");
+  const [inputName, setInputName] = useState("");
+  const [inputContact, setInputContact] = useState("");
   const [showPortalSelection, setShowPortalSelection] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
 
-  const handleLogin = () => {
-    if (inputEmail.trim()) {
+  const handleLogin = async () => {
+    if (!inputEmail.trim() || !inputName.trim() || !inputContact.trim()) {
+      alert("Please enter email, name, and contact number");
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      // Store patient profile in MongoDB
+      const response = await fetch("/api/patient/profile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: inputEmail,
+          name: inputName,
+          contact: inputContact,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to create patient profile");
+      }
+
+      const newPatientId = inputEmail.replace(/[^a-zA-Z0-9]/g, "");
       setEmail(inputEmail);
-      setPatientId(inputEmail.replace(/[^a-zA-Z0-9]/g, ""));
+      setName(inputName);
+      setContact(inputContact);
+      setPatientId(newPatientId);
       setIsLoggedIn(true);
+    } catch (error) {
+      console.error("Login error:", error);
+      alert("Failed to create patient profile. Please try again.");
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -115,23 +149,51 @@ export default function Home() {
 
           <div className="space-y-4">
             <input
+              type="text"
+              value={inputName}
+              onChange={(e) => setInputName(e.target.value)}
+              placeholder="Enter your full name"
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 focus:border-transparent outline-none"
+              disabled={isLoading}
+            />
+
+            <input
+              type="tel"
+              value={inputContact}
+              onChange={(e) => setInputContact(e.target.value)}
+              placeholder="Enter your contact number"
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 focus:border-transparent outline-none"
+              disabled={isLoading}
+            />
+
+            <input
               type="email"
               value={inputEmail}
               onChange={(e) => setInputEmail(e.target.value)}
               placeholder="Enter your email"
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 focus:border-transparent outline-none"
+              disabled={isLoading}
               onKeyPress={(e) => e.key === "Enter" && handleLogin()}
             />
+
             <button
               onClick={handleLogin}
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition"
+              disabled={isLoading}
+              className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-semibold py-2 px-4 rounded-lg transition flex items-center justify-center gap-2"
             >
-              Enter Portal
+              {isLoading ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Creating Profile...
+                </>
+              ) : (
+                "Enter Portal"
+              )}
             </button>
           </div>
 
           <p className="text-xs text-gray-500 text-center mt-4">
-            Demo mode - Enter any email to continue
+            Demo mode - Enter your details to continue
           </p>
         </div>
       </div>
@@ -151,7 +213,9 @@ export default function Home() {
           >
             ← Back to portal selection
           </button>
-          <h1 className="text-4xl font-bold text-gray-900">Welcome, {email}</h1>
+          <h1 className="text-4xl font-bold text-gray-900">
+            Welcome, {name || email}
+          </h1>
           <p className="text-gray-600 mt-2">
             Your healthcare assistant is ready to help
           </p>
@@ -164,7 +228,12 @@ export default function Home() {
           </TabsList>
 
           <TabsContent value="chat" className="space-y-4">
-            <ChatInterface patientId={patientId} email={email} />
+            <ChatInterface
+              patientId={patientId}
+              email={email}
+              name={name}
+              contact={contact}
+            />
           </TabsContent>
 
           <TabsContent value="communications" className="space-y-4">

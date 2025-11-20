@@ -2,9 +2,22 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { runHealthcareGraph } from "@/lib/langgraph/graph";
 import type { ChatMessage } from "@/lib/types";
+
 export async function POST(request: NextRequest) {
   try {
-    const { patientId, email, query, chatHistory } = await request.json();
+    const body = await request.json();
+    console.log("[API] Raw request body:", JSON.stringify(body, null, 2));
+
+    const { patientId, email, query, chatHistory } = body;
+
+    console.log("[API] Extracted fields:", {
+      patientId: patientId ? "present" : "MISSING",
+      email: email ? "present" : "MISSING",
+      query: query ? `present (${query.length} chars)` : "MISSING",
+      chatHistory: chatHistory
+        ? `present (${chatHistory.length} items)`
+        : "empty",
+    });
 
     if (!patientId || !query) {
       return NextResponse.json(
@@ -19,7 +32,6 @@ export async function POST(request: NextRequest) {
       email,
     });
 
-    // Convert chat history to proper format
     const formattedChatHistory: ChatMessage[] = (chatHistory || []).map(
       (msg: any) => ({
         role: msg.role || "user",
@@ -34,6 +46,7 @@ export async function POST(request: NextRequest) {
       query,
       chat_history: formattedChatHistory,
       user_email: email,
+      email: email, // Explicitly set email field for consistent access
     };
 
     // Execute the LangGraph
@@ -42,7 +55,6 @@ export async function POST(request: NextRequest) {
 
     console.log("[API] LangGraph execution completed");
 
-    // Build response based on agent type
     let response: any = {
       answer: result.answer,
     };
@@ -67,6 +79,7 @@ export async function POST(request: NextRequest) {
         answer: result.answer,
         needsEmail: result.needsEmail,
         conversationHistory: result.conversationHistory,
+        personalData: result.personalData, // Include personal data from patients collection
       };
     }
 
@@ -81,6 +94,10 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error("[API] Chat API error:", error);
+    console.error(
+      "[API] Error stack:",
+      error instanceof Error ? error.stack : "No stack trace"
+    );
 
     return NextResponse.json(
       {
