@@ -11,99 +11,87 @@ const model = genai.getGenerativeModel({ model: "gemini-2.5-flash" });
  * Remove markdown formatting from text
  */
 function cleanMarkdown(text: string): string {
-  return (
-    text
-      // Remove bold (**text** or __text__)
-      .replace(/(\*\*|__)(.*?)\1/g, "$2")
-      // Remove italic (*text* or _text_)
-      .replace(/([*_])(.*?)\1/g, "$2")
-      // Remove strikethrough (~~text~~)
-      .replace(/~~(.*?)~~/g, "$1")
-      // Remove inline code (`code`)
-      .replace(/`([^`]+)`/g, "$1")
-      // Remove headers (# ## ### etc)
-      .replace(/^#{1,6}\s+/gm, "")
-      // Remove horizontal rules (---, ___, ***)
-      .replace(/^[-*_]{3,}\s*$/gm, "")
-      // Remove blockquotes (> text)
-      .replace(/^>\s+/gm, "")
-      // Remove bullet markers but keep the text (-, *, +)
-      .replace(/^[\s]*[-*+]\s+/gm, "  ")
-      // Remove numbered list markers (1., 2., etc)
-      .replace(/^[\s]*\d+\.\s+/gm, "  ")
-      // Remove links but keep text [text](url) -> text
-      .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
-      // Remove images ![alt](url)
-      .replace(/!\[([^\]]*)\]\([^)]+\)/g, "$1")
-      // Clean up multiple spaces but preserve paragraph breaks
-      .replace(/ {2,}/g, " ")
-      .trim()
-  );
+  return text
+    .replace(/(\*\*|__)(.*?)\1/g, "$2")
+    .replace(/([*_])(.*?)\1/g, "$2")
+    .replace(/~~(.*?)~~/g, "$1")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/^#{1,6}\s+/gm, "")
+    .replace(/^[-*_]{3,}\s*$/gm, "")
+    .replace(/^>\s+/gm, "")
+    .replace(/^[\s]*[-*+]\s+/gm, "  ")
+    .replace(/^[\s]*\d+\.\s+/gm, "  ")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/!\[([^\]]*)\]\([^)]+\)/g, "$1")
+    .replace(/ {2,}/g, " ")
+    .trim();
+}
+
+/**
+ * Check if enough information has been gathered
+ */
+function hasEnoughInformation(chatHistory: any[]): boolean {
+  const assistantQuestions = chatHistory.filter(
+    (m) => m.role === "assistant"
+  ).length;
+
+  // Need at least 4-5 back-and-forth exchanges
+  return assistantQuestions >= 4;
 }
 
 export async function clinicalAgent(state: ChatState): Promise<{
   answer: string;
   followUpQuestions?: string[];
   severity: "low" | "medium" | "high" | "critical";
+  needsSummary?: boolean;
 }> {
-  const prompt = `You are a clinical healthcare assistant. Help the patient with their medical query.
+  const hasEnoughInfo = hasEnoughInformation(state.chat_history);
 
-Patient Query: "${state.query}"
-Chat History: ${JSON.stringify(state.chat_history.slice(-3))}
+  // If ready for summary
+  if (hasEnoughInfo) {
+    const summaryPrompt = `You are a clinical healthcare assistant. Create a concise medical summary.
 
-Provide:
-1. Clear, empathetic response in plain text (NO markdown formatting - no asterisks, underscores, or dashes for formatting)
-2. General health information (not medical advice)
-3. When to see a doctor
-4. Suggest 2-3 follow-up questions if more info is needed
+Patient's Initial Query: "${state.query}"
+Complete Conversation History: ${JSON.stringify(state.chat_history)}
 
-IMPORTANT: Write naturally without any markdown symbols. Use simple paragraphs and line breaks only.
+Analyze the entire conversation and create a brief, structured summary that includes:
+1. Chief complaint
+2. Key symptoms and characteristics gathered
+3. Duration and frequency
+4. Severity assessment
+5. Other relevant details mentioned
+6. Simple statement about what this might indicate (NO recommendations or treatment advice)
+7. When to seek medical care if applicable
+
+Keep the summary concise and factual. NO markdown formatting.
+DO NOT provide treatment recommendations, suggestions, or advice.
 
 Format your response as:
-RESPONSE: [your response in plain text]
-FOLLOW_UP: [question1], [question2], [question3] or NONE
+RESPONSE: [Medical Summary in plain text]
+FOLLOW_UP: NONE
 SEVERITY: [low/medium/high/critical]`;
 
-  try {
-    const response = await retryWithBackoff(
-      async () => {
-        return await model.generateContent(prompt);
-      },
-      3,
-      1000
-    );
+    try {
+      const response = await retryWithBackoff(
+        async () => {
+          return await model.generateContent(summaryPrompt);
+        },
+        3,
+        1000
+      );
 
-    const text = response.response.text();
-
-    const parseResponse = (
-      text: string
-    ): {
-      answer: string;
-      followUpQuestions?: string[];
-      severity: "low" | "medium" | "high" | "critical";
-    } => {
+      const text = response.response.text();
       const responseMatch = text.match(
         /RESPONSE:\s*([\s\S]*?)(?=FOLLOW_UP:|$)/
-      );
-      const followUpMatch = text.match(
-        /FOLLOW_UP:\s*([\s\S]*?)(?=SEVERITY:|$)/
       );
       const severityMatch = text.match(/SEVERITY:\s*(\w+)/);
 
       const rawAnswer = responseMatch ? responseMatch[1].trim() : text;
-      // Clean markdown from the answer
       const answer = cleanMarkdown(rawAnswer);
 
-      const followUpText = followUpMatch ? followUpMatch[1].trim() : "";
       const severityText = severityMatch
         ? severityMatch[1].toLowerCase()
         : "medium";
-
-      const followUpQuestions =
-        followUpText && followUpText !== "NONE"
-          ? followUpText.split(",").map((q) => q.trim())
-          : undefined;
-
       const validSeverities: Array<"low" | "medium" | "high" | "critical"> = [
         "low",
         "medium",
@@ -115,16 +103,86 @@ SEVERITY: [low/medium/high/critical]`;
           ? (severityText as "low" | "medium" | "high" | "critical")
           : "medium";
 
-      return { answer, followUpQuestions, severity };
-    };
+      return {
+        answer,
+        severity,
+        needsSummary: false,
+      };
+    } catch (error) {
+      console.error("Clinical agent error:", error);
+      return {
+        answer:
+          "I'm experiencing technical difficulties. Please contact your healthcare provider for immediate concerns.",
+        severity: "medium",
+      };
+    }
+  }
 
-    return parseResponse(text);
-  } catch (error) {
-    console.error("Clinical agent error after retries:", error);
+  // Ask next dynamic question based on conversation context
+  const questionPrompt = `You are a clinical healthcare assistant gathering information from a patient.
+
+Patient's Initial Query: "${state.query}"
+Full Conversation History: ${JSON.stringify(state.chat_history)}
+
+Based on the entire conversation so far, determine what critical information is still missing to understand the patient's condition.
+
+Your task:
+1. Briefly acknowledge their previous response (1 sentence)
+2. Ask ONE intelligent, context-aware follow-up question to gather the most important missing information
+3. Your question should be natural, empathetic, and directly related to what they've already shared
+4. Focus on understanding: symptoms, duration, severity, triggers, related symptoms, medical history, medications
+
+IMPORTANT:
+- Ask ONLY ONE question
+- Make it specific to their situation based on what they've already told you
+- Don't ask redundant questions about information already provided
+- Be conversational and caring in tone
+
+Format your response as:
+RESPONSE: [Brief acknowledgment + single contextual question in plain text]
+FOLLOW_UP: CONTINUE
+SEVERITY: [low/medium/high/critical based on description so far]`;
+
+  try {
+    const response = await retryWithBackoff(
+      async () => {
+        return await model.generateContent(questionPrompt);
+      },
+      3,
+      1000
+    );
+
+    const text = response.response.text();
+    const responseMatch = text.match(/RESPONSE:\s*([\s\S]*?)(?=FOLLOW_UP:|$)/);
+    const severityMatch = text.match(/SEVERITY:\s*(\w+)/);
+
+    const rawAnswer = responseMatch ? responseMatch[1].trim() : text;
+    const answer = cleanMarkdown(rawAnswer);
+
+    const severityText = severityMatch
+      ? severityMatch[1].toLowerCase()
+      : "medium";
+    const validSeverities: Array<"low" | "medium" | "high" | "critical"> = [
+      "low",
+      "medium",
+      "high",
+      "critical",
+    ];
+    const severity: "low" | "medium" | "high" | "critical" =
+      validSeverities.includes(severityText as any)
+        ? (severityText as "low" | "medium" | "high" | "critical")
+        : "medium";
 
     return {
+      answer,
+      severity,
+      needsSummary: false,
+    };
+  } catch (error) {
+    console.error("Clinical agent error:", error);
+    return {
       answer:
-        "I'm currently experiencing technical difficulties connecting to the AI service. For immediate health concerns, please contact your healthcare provider or call emergency services if urgent. I'll be back online shortly to assist you.",
+        "I'm experiencing technical difficulties. Please contact your healthcare provider for immediate concerns.",
       severity: "medium",
     };
   }
@@ -139,10 +197,7 @@ export async function emergencyProtocol(state: ChatState): Promise<{
 }> {
   console.log("[Emergency Protocol] Executing emergency protocol");
 
-  // Check if location information is in the query or chat history
   const query = state.query.toLowerCase();
-
-  // Check current query and last few messages for location
   const recentMessages = state.chat_history.slice(-3);
   const conversationText = [
     query,
@@ -154,9 +209,8 @@ export async function emergencyProtocol(state: ChatState): Promise<{
     conversationText.includes("location") ||
     conversationText.includes("address") ||
     conversationText.includes("city") ||
-    /\d+\.\d+,\s*-?\d+\.\d+/.test(conversationText); // Check for coordinates
+    /\d+\.\d+,\s*-?\d+\.\d+/.test(conversationText);
 
-  // Try to extract and use location if provided
   if (hasLocationKeywords) {
     try {
       console.log("[Emergency Protocol] Location detected, fetching clinics");
@@ -176,7 +230,6 @@ export async function emergencyProtocol(state: ChatState): Promise<{
     }
   }
 
-  // Default emergency response - ask for location
   return {
     message:
       "EMERGENCY DETECTED\n\nThis appears to be a medical emergency. Please:\n\n1. Call 911 or your local emergency number IMMEDIATELY\n2. If safe, provide your location so I can find nearby emergency facilities\n\nTo help you find nearby emergency services, please provide:\n• Your city/area (e.g., 'New York, NY')\n• Or your coordinates (e.g., '40.7128,-74.0060')\n• Or say 'find emergency rooms near [your location]'",
