@@ -44,6 +44,8 @@ export async function clinicalAgent(state: ChatState): Promise<{
   followUpQuestions?: string[];
   severity: "low" | "medium" | "high" | "critical";
   needsSummary?: boolean;
+  summary?: string; // Summary to send to dashboard
+  isSummaryResponse?: boolean; // Flag to indicate this is the final summary
 }> {
   const hasEnoughInfo = hasEnoughInformation(state.chat_history);
 
@@ -87,7 +89,7 @@ SEVERITY: [low/medium/high/critical]`;
       const severityMatch = text.match(/SEVERITY:\s*(\w+)/);
 
       const rawAnswer = responseMatch ? responseMatch[1].trim() : text;
-      const answer = cleanMarkdown(rawAnswer);
+      const summaryText = cleanMarkdown(rawAnswer);
 
       const severityText = severityMatch
         ? severityMatch[1].toLowerCase()
@@ -103,10 +105,14 @@ SEVERITY: [low/medium/high/critical]`;
           ? (severityText as "low" | "medium" | "high" | "critical")
           : "medium";
 
+      // Return different message for chat UI
       return {
-        answer,
+        answer:
+          "Thank you for providing all the information. I've created a summary of our conversation and sent it to your doctor. They will review it and contact you shortly if needed. Is there anything else I can help you with?",
         severity,
         needsSummary: false,
+        summary: summaryText, // This summary will be sent to dashboards
+        isSummaryResponse: true, // Flag to indicate this is the final summary
       };
     } catch (error) {
       console.error("Clinical agent error:", error);
@@ -177,6 +183,7 @@ SEVERITY: [low/medium/high/critical based on description so far]`;
       answer,
       severity,
       needsSummary: false,
+      isSummaryResponse: false, // This is just a question, not the final summary
     };
   } catch (error) {
     console.error("Clinical agent error:", error);

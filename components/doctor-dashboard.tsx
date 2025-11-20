@@ -1,19 +1,36 @@
-// components/doctor-dashboard.tsx
 "use client";
 
 import { useState, useEffect } from "react";
-import { Search, Filter, Mail, Calendar, AlertCircle } from "lucide-react";
+import {
+  Search,
+  Filter,
+  Mail,
+  Calendar,
+  AlertCircle,
+  User,
+  Phone,
+} from "lucide-react";
 
 interface Communication {
   _id: string;
   patientId: string;
+  patientEmail?: string;
   type: string;
   question: string;
   answer: string;
+  summary?: string;
   severity?: string;
   status: string;
   createdAt: string;
-  emailSent: boolean;
+  timestamp?: string;
+  messageCount?: number;
+}
+
+interface PatientInfo {
+  email: string;
+  name: string;
+  contact: string;
+  createdAt: string;
 }
 
 interface DoctorDashboardProps {
@@ -23,6 +40,9 @@ interface DoctorDashboardProps {
 export function DoctorDashboard({ doctorEmail }: DoctorDashboardProps) {
   const [communications, setCommunications] = useState<Communication[]>([]);
   const [filteredComms, setFilteredComms] = useState<Communication[]>([]);
+  const [patientInfo, setPatientInfo] = useState<Map<string, PatientInfo>>(
+    new Map()
+  );
   const [loading, setLoading] = useState(true);
   const [emailFilter, setEmailFilter] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
@@ -44,6 +64,27 @@ export function DoctorDashboard({ doctorEmail }: DoctorDashboardProps) {
 
       if (data.success) {
         setCommunications(data.communications);
+
+        // Fetch patient info for each communication
+        data.communications.forEach(async (comm: Communication) => {
+          if (comm.patientEmail && !patientInfo.has(comm.patientId)) {
+            try {
+              const patResponse = await fetch(
+                `/api/patient/profile?email=${encodeURIComponent(
+                  comm.patientEmail
+                )}`
+              );
+              if (patResponse.ok) {
+                const patData = await patResponse.json();
+                setPatientInfo((prev) =>
+                  new Map(prev).set(comm.patientId, patData.data)
+                );
+              }
+            } catch (error) {
+              console.error("Failed to fetch patient info:", error);
+            }
+          }
+        });
       }
     } catch (error) {
       console.error("Failed to fetch communications:", error);
@@ -57,15 +98,16 @@ export function DoctorDashboard({ doctorEmail }: DoctorDashboardProps) {
 
     // Email filter
     if (emailFilter.trim()) {
-      filtered = filtered.filter((comm) =>
-        comm.patientId
-          .toLowerCase()
-          .includes(emailFilter.toLowerCase().replace(/[^a-zA-Z0-9]/g, ""))
+      filtered = filtered.filter(
+        (comm) =>
+          comm.patientId
+            .toLowerCase()
+            .includes(emailFilter.toLowerCase().replace(/[^a-zA-Z0-9]/g, "")) ||
+          comm.patientEmail?.toLowerCase().includes(emailFilter.toLowerCase())
       );
     }
 
-    // Type filter
-    if (typeFilter !== "all") {
+    if (typeFilter && typeFilter !== "all") {
       filtered = filtered.filter((comm) => comm.type === typeFilter);
     }
 
@@ -100,6 +142,8 @@ export function DoctorDashboard({ doctorEmail }: DoctorDashboardProps) {
         return "bg-blue-600 text-white";
       case "personal":
         return "bg-purple-600 text-white";
+      case "faq":
+        return "bg-green-600 text-white";
       default:
         return "bg-gray-600 text-white";
     }
@@ -112,7 +156,7 @@ export function DoctorDashboard({ doctorEmail }: DoctorDashboardProps) {
       <div className="flex items-center justify-center min-h-[400px]">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading communications...</p>
+          <p className="mt-4 text-gray-600">Loading summaries...</p>
         </div>
       </div>
     );
@@ -125,7 +169,7 @@ export function DoctorDashboard({ doctorEmail }: DoctorDashboardProps) {
         <div className="bg-white rounded-lg shadow p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-600">Total Communications</p>
+              <p className="text-sm text-gray-600">Total Summaries</p>
               <p className="text-2xl font-bold text-gray-900">
                 {communications.length}
               </p>
@@ -142,21 +186,25 @@ export function DoctorDashboard({ doctorEmail }: DoctorDashboardProps) {
                 {uniquePatients.length}
               </p>
             </div>
-            <AlertCircle className="h-8 w-8 text-green-600" />
+            <User className="h-8 w-8 text-green-600" />
           </div>
         </div>
 
-        <div className="bg-white rounded-lg shadow p-6">
+        {/* <div className="bg-white rounded-lg shadow p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-600">Emergency Cases</p>
+              <p className="text-sm text-gray-600">High Severity</p>
               <p className="text-2xl font-bold text-red-600">
-                {communications.filter((c) => c.type === "emergency").length}
+                {
+                  communications.filter(
+                    (c) => c.severity === "high" || c.severity === "critical"
+                  ).length
+                }
               </p>
             </div>
             <AlertCircle className="h-8 w-8 text-red-600" />
           </div>
-        </div>
+        </div> */}
 
         <div className="bg-white rounded-lg shadow p-6">
           <div className="flex items-center justify-between">
@@ -180,7 +228,7 @@ export function DoctorDashboard({ doctorEmail }: DoctorDashboardProps) {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Patient Email
+              Patient Email or ID
             </label>
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
@@ -188,7 +236,7 @@ export function DoctorDashboard({ doctorEmail }: DoctorDashboardProps) {
                 type="text"
                 value={emailFilter}
                 onChange={(e) => setEmailFilter(e.target.value)}
-                placeholder="Search by email..."
+                placeholder="Search by email or ID..."
                 className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 focus:border-transparent outline-none"
               />
             </div>
@@ -204,10 +252,10 @@ export function DoctorDashboard({ doctorEmail }: DoctorDashboardProps) {
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 focus:border-transparent outline-none"
             >
               <option value="all">All Types</option>
-              <option value="emergency">Emergency</option>
               <option value="clinical">Clinical</option>
+              <option value="emergency">Emergency</option>
+              <option value="faq">FAQ</option>
               <option value="personal">Personal</option>
-              <option value="generic_faq">Generic_FAQ</option>
             </select>
           </div>
 
@@ -243,89 +291,107 @@ export function DoctorDashboard({ doctorEmail }: DoctorDashboardProps) {
         )}
       </div>
 
-      {/* Communications List */}
+      {/* Summaries List */}
       <div className="bg-white rounded-lg shadow">
         <div className="p-6 border-b border-gray-200">
           <h3 className="text-lg font-semibold text-gray-900">
-            Patient Communications ({filteredComms.length})
+            Conversation Summaries ({filteredComms.length})
           </h3>
         </div>
 
-        <div className="divide-y divide-gray-200 max-h-[600px] overflow-y-auto">
+        <div className="divide-y divide-gray-200 max-h-[800px] overflow-y-auto">
           {filteredComms.length === 0 ? (
             <div className="p-8 text-center text-gray-500">
-              No communications found matching your filters.
+              No summaries found. Patients will see summaries after completing
+              conversations.
             </div>
           ) : (
-            filteredComms.map((comm) => (
-              <div key={comm._id} className="p-6 hover:bg-gray-50 transition">
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex items-center gap-3">
-                    <span
-                      className={`px-3 py-1 rounded-full text-xs font-semibold ${getTypeColor(
-                        comm.type
-                      )}`}
-                    >
-                      {comm.type.toUpperCase()}
-                    </span>
-                    {comm.severity && (
+            filteredComms.map((comm) => {
+              const patient = patientInfo.get(comm.patientId);
+              return (
+                <div key={comm._id} className="p-6 hover:bg-gray-50 transition">
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="flex items-center gap-3">
                       <span
-                        className={`px-3 py-1 rounded-full text-xs font-semibold border ${getSeverityColor(
-                          comm.severity
+                        className={`px-3 py-1 rounded-full text-xs font-semibold ${getTypeColor(
+                          comm.type
                         )}`}
                       >
-                        {comm.severity.toUpperCase()}
+                        {comm.type === "emergency" ? "🚨 " : ""}
+                        {comm.type.toUpperCase().replace(/_/g, " ")}
                       </span>
-                    )}
-                    {comm.emailSent && (
-                      <span className="px-3 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-800">
-                        ✓ Email Sent
-                      </span>
-                    )}
+                      {comm.severity && (
+                        <span
+                          className={`px-3 py-1 rounded-full text-xs font-semibold border ${getSeverityColor(
+                            comm.severity
+                          )}`}
+                        >
+                          {comm.severity.toUpperCase()}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 text-sm text-gray-500">
+                      <Calendar className="h-4 w-4" />
+                      {new Date(
+                        comm.timestamp || comm.createdAt
+                      ).toLocaleString()}
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2 text-sm text-gray-500">
-                    <Calendar className="h-4 w-4" />
-                    {new Date(comm.createdAt).toLocaleString()}
+
+                  {/* Patient Information */}
+                  {patient ? (
+                    <div className="mb-3 bg-blue-50 rounded p-3 border border-blue-200">
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-sm">
+                        <div>
+                          <p className="text-gray-600">Name:</p>
+                          <p className="font-semibold text-gray-900">
+                            {patient.name}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <Mail className="h-4 w-4 text-gray-600" />
+                          <p className="text-gray-900">{patient.email}</p>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <Phone className="h-4 w-4 text-gray-600" />
+                          <p className="text-gray-900">{patient.contact}</p>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="mb-3 text-sm text-gray-500">
+                      <p>Patient ID: {comm.patientId}</p>
+                      <p>Email: {comm.patientEmail}</p>
+                    </div>
+                  )}
+
+                  {/* Summary */}
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    <p className="text-sm font-semibold text-gray-700 mb-2">
+                      Conversation Summary ({comm.messageCount || "multiple"}{" "}
+                      messages):
+                    </p>
+                    <p className="text-sm text-gray-900 whitespace-pre-wrap line-clamp-6">
+                      {comm.summary || comm.answer}
+                    </p>
+                  </div>
+
+                  <div className="mt-3 flex items-center gap-4 text-xs text-gray-500">
+                    <span
+                      className={`px-2 py-1 rounded ${
+                        comm.status === "completed"
+                          ? "bg-green-100 text-green-800"
+                          : comm.status === "in_progress"
+                          ? "bg-yellow-100 text-yellow-800"
+                          : "bg-gray-100 text-gray-800"
+                      }`}
+                    >
+                      Status: {comm.status}
+                    </span>
                   </div>
                 </div>
-
-                <div className="mb-3">
-                  <p className="text-sm font-semibold text-gray-700 mb-1">
-                    Patient ID: {comm.patientId}
-                  </p>
-                </div>
-
-                <div className="bg-gray-50 rounded-lg p-4 mb-3">
-                  <p className="text-sm font-semibold text-gray-700 mb-2">
-                    Question:
-                  </p>
-                  <p className="text-sm text-gray-900">{comm.question}</p>
-                </div>
-
-                <div className="bg-blue-50 rounded-lg p-4">
-                  <p className="text-sm font-semibold text-gray-700 mb-2">
-                    Answer:
-                  </p>
-                  <p className="text-sm text-gray-900 whitespace-pre-wrap">
-                    {comm.answer}
-                  </p>
-                </div>
-
-                <div className="mt-3 flex items-center gap-4 text-xs text-gray-500">
-                  <span
-                    className={`px-2 py-1 rounded ${
-                      comm.status === "completed"
-                        ? "bg-green-100 text-green-800"
-                        : comm.status === "in_progress"
-                        ? "bg-yellow-100 text-yellow-800"
-                        : "bg-gray-100 text-gray-800"
-                    }`}
-                  >
-                    Status: {comm.status}
-                  </span>
-                </div>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
       </div>

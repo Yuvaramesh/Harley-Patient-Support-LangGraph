@@ -1,4 +1,3 @@
-// lib/langgraph/nodes.ts
 import type { HealthcareGraphStateType } from "../langgraph/state";
 import {
   supervisorAgent,
@@ -9,7 +8,10 @@ import {
   faqAgent,
 } from "../agents";
 import { getCollection } from "../mongodb";
-import { sendCommunicationEmail, sendEmergencyAlert } from "../email-service";
+import {
+  sendCommunicationEmail,
+  sendEmergencySummaryToDoctor,
+} from "../email-service";
 import type { Communication, ClinicalNote } from "../types";
 import { ObjectId } from "mongodb";
 
@@ -25,7 +27,7 @@ export async function supervisorNode(
     patientId: state.patientId,
     query: state.query,
     chat_history: state.chat_history,
-    user_email: state.user_email,
+    email: state.email,
   });
 
   console.log(`[Graph] Supervisor routed to: ${agentType}`);
@@ -80,8 +82,6 @@ export async function clinicalNode(
 /**
  * Node 4: Emergency Protocol
  */
-// lib/langgraph/nodes.ts - Update the emergencyNode function
-
 export async function emergencyNode(
   state: HealthcareGraphStateType
 ): Promise<Partial<HealthcareGraphStateType>> {
@@ -101,8 +101,10 @@ export async function emergencyNode(
     needsLocation: emergency.needsLocation,
     clinicInfo: emergency.clinicInfo,
     severity: "critical",
+    communicationType: "emergency", // Set communication type to emergency
   };
 }
+
 /**
  * Node 5: Personal Agent
  */
@@ -115,13 +117,21 @@ export async function personalNode(
     patientId: state.patientId,
     query: state.query,
     chat_history: state.chat_history,
-    user_email: state.user_email,
+    email: state.email, // Explicitly pass email for data lookups
+  });
+
+  console.log("[Graph] Personal agent response:", {
+    hasPersonalData: !!personal.personalData,
+    hasConversationHistory: !!personal.conversationHistory,
+    needsEmail: personal.needsEmail,
   });
 
   return {
     answer: personal.answer,
     needsEmail: personal.needsEmail,
     conversationHistory: personal.conversationHistory,
+    personalData: personal.personalData,
+    communicationType: "personal", // Set communication type to personal
   };
 }
 
@@ -141,6 +151,7 @@ export async function faqNode(
 
   return {
     answer,
+    communicationType: "faq", // Set communication type to faq
   };
 }
 
@@ -157,10 +168,20 @@ export async function saveToDatabaseNode(
       "communications"
     );
 
+    let communicationType: "clinical" | "faq" | "personal" | "emergency" =
+      "clinical";
+    if (state.agent_type === "emergency") {
+      communicationType = "emergency";
+    } else if (state.agent_type === "personal") {
+      communicationType = "personal";
+    } else if (state.agent_type === "generic_faq") {
+      communicationType = "faq";
+    }
+
     // Prepare communication record
     const communicationRecord: Partial<Communication> = {
       patientId: state.patientId,
-      type: state.agent_type as any,
+      type: communicationType,
       question: state.query,
       answer: state.answer || "",
       severity: state.severity,
@@ -168,6 +189,8 @@ export async function saveToDatabaseNode(
       createdAt: new Date(),
       updatedAt: new Date(),
       emailSent: false,
+      sentToPatient: communicationType !== "emergency", // Emergency only to doctor
+      sentToDoctor: true, // Always sent to doctor
     };
 
     // Insert into database
@@ -209,28 +232,46 @@ export async function emailNotificationNode(
 ): Promise<Partial<HealthcareGraphStateType>> {
   console.log("[Graph] Executing email notification node");
 
-  if (!state.user_email) {
-    console.log("[Graph] No email provided, skipping notification");
-    return { emailSent: false };
-  }
-
   try {
-    // Emergency alert
     if (state.agent_type === "emergency") {
-      await sendEmergencyAlert(
-        state.user_email,
-        state.emergencyMessage ||
-          "Emergency detected. Please seek immediate medical attention."
-      );
+      if (process.env.EMAIL_USER_DOCTOR) {
+        const patientDataCollection = await getCollection("patients");
+        const patientData = await patientDataCollection.findOne({
+          patientId: state.patientId,
+        });
 
-      console.log("[Graph] Emergency alert sent");
+        const summary = state.chat_history
+          .map(
+            (msg) =>
+              `${msg.role === "user" ? "Patient" : "Assistant"}: ${msg.content}`
+          )
+          .join("\n\n");
+
+        await sendEmergencySummaryToDoctor(
+          process.env.EMAIL_USER_DOCTOR,
+          patientData?.name || state.patientId,
+          patientData?.contact || "N/A",
+          state.emergencyMessage || "Emergency situation detected",
+          summary
+        );
+
+        console.log("[Graph] Emergency alert sent to doctor only");
+      } else {
+        console.warn("[Graph] EMAIL_USER_DOCTOR not configured");
+      }
+
       return { emailSent: true };
+    }
+
+    if (!state.email) {
+      console.log("[Graph] No email provided for non-emergency communication");
+      return { emailSent: false };
     }
 
     // High severity clinical
     if (state.agent_type === "clinical" && state.severity === "high") {
       await sendCommunicationEmail({
-        to: state.user_email,
+        to: state.email,
         subject: "Clinical Response - Harley Health Portal",
         htmlContent: state.answer || "",
         questions: [{ q: state.query, a: state.answer || "" }],
@@ -242,7 +283,7 @@ export async function emailNotificationNode(
           "communications"
         );
         await commsCollection.updateOne(
-          { _id: new ObjectId(state.communicationId) },
+          { id: new ObjectId(state.communicationId) },
           { $set: { emailSent: true } }
         );
       }

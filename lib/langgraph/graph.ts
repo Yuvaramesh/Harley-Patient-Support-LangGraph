@@ -83,7 +83,7 @@ export async function runHealthcareGraph(
   console.log("[Graph] Input state:", {
     patientId: input.patientId,
     query: input.query,
-    user_email: input.user_email,
+    email: input.email,
   });
 
   const graph = buildHealthcareGraph();

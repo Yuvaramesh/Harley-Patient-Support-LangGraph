@@ -2,8 +2,22 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import type { ChatState } from "../types";
 import { getCollection } from "../mongodb";
-import type { Communication } from "../types";
+import type { Communication, Patient, ChatHistory } from "../types";
 import { retryWithBackoff } from "../retry-utility";
+
+/**
+ * Personal data interface
+ */
+export interface PersonalData {
+  email?: string;
+  patientId?: string;
+  name?: string;
+  age?: number;
+  medicalHistory?: string[];
+  emergencyContact?: string;
+  emergencyNumber?: string;
+  contact?: string;
+}
 
 const genai = new GoogleGenerativeAI(process.env.NEXT_PUBLIC_GEMINI_API_KEY!);
 const model = genai.getGenerativeModel({ model: "gemini-2.5-flash" });
@@ -22,8 +36,8 @@ function cleanMarkdown(text: string): string {
     .replace(/^>\s+/gm, "")
     .replace(/^[\s]*[-*+]\s+/gm, "  ")
     .replace(/^[\s]*\d+\.\s+/gm, "  ")
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
-    .replace(/!\[([^\]]*)\]\([^)]+\)/g, "$1")
+    .replace(/\[([^\]]+)\]$$[^)]+$$/g, "$1")
+    .replace(/!\[([^\]]*)\]$$[^)]+$$/g, "$1")
     .replace(/ {2,}/g, " ")
     .trim();
 }
@@ -32,9 +46,130 @@ export async function personalAgent(state: ChatState): Promise<{
   answer: string;
   needsEmail: boolean;
   conversationHistory?: Communication[];
+  personalData?: PersonalData;
 }> {
-  // Check if user is asking for conversation history/summary
   const query = state.query.toLowerCase();
+
+  const isPersonalDataRequest =
+    query.includes("my email") ||
+    query.includes("my patient id") ||
+    query.includes("my id") ||
+    query.includes("my profile") ||
+    query.includes("my account") ||
+    query.includes("my details") ||
+    query.includes("my information") ||
+    query.includes("my contact") ||
+    query.includes("my phone") ||
+    query.includes("my number") ||
+    query.includes("who am i") ||
+    query.includes("my name");
+
+  if (isPersonalDataRequest) {
+    console.log("[PersonalAgent] Personal data request detected");
+    console.log(
+      "[PersonalAgent] State - email:",
+      state.email,
+      "patientId:",
+      state.patientId
+    );
+
+    if (!state.email && !state.patientId) {
+      console.log("[PersonalAgent] Missing both email and patientId");
+      return {
+        answer:
+          "To retrieve your personal information, I need your email address. Please provide your registered email address.",
+        needsEmail: true,
+      };
+    }
+
+    try {
+      const patientsCollection = await getCollection<Patient>("patients");
+
+      const query_filter =
+        state.email && state.patientId
+          ? { $or: [{ email: state.email }, { patientId: state.patientId }] }
+          : state.email
+          ? { email: state.email }
+          : { patientId: state.patientId };
+
+      console.log(
+        "[PersonalAgent] Querying patients collection with filter:",
+        query_filter
+      );
+
+      const patientData = await patientsCollection.findOne(query_filter);
+
+      if (!patientData) {
+        console.log("[PersonalAgent] Patient not found in database");
+        return {
+          answer:
+            "I couldn't find your patient profile in our system. Please ensure you've completed your initial registration.",
+          needsEmail: false,
+        };
+      }
+
+      console.log("[PersonalAgent] Patient found:", {
+        email: patientData.email,
+        name: patientData.name,
+      });
+
+      const personalData: PersonalData = {
+        email: patientData.email || state.email,
+        patientId: patientData.patientId || state.patientId,
+        name: patientData.name,
+        age: patientData.age,
+        medicalHistory: patientData.medicalHistory,
+        emergencyContact: patientData.emergencyContact,
+        emergencyNumber: patientData.emergencyNumber,
+        contact: patientData.contact,
+      };
+
+      let response = `Here is your personal information:\n\n`;
+      response += `Name: ${personalData.name || "Not provided"}\n`;
+      response += `Email: ${personalData.email}\n`;
+      response += `Patient ID: ${personalData.patientId}\n`;
+      response += `Contact Number: ${personalData.contact || "Not provided"}\n`;
+
+      if (personalData.age) {
+        response += `Age: ${personalData.age} years\n`;
+      }
+      if (personalData.emergencyContact) {
+        response += `Emergency Contact: ${personalData.emergencyContact}\n`;
+      }
+      if (personalData.emergencyNumber) {
+        response += `Emergency Number: ${personalData.emergencyNumber}\n`;
+      }
+      if (
+        personalData.medicalHistory &&
+        personalData.medicalHistory.length > 0
+      ) {
+        response += `\nMedical History:\n`;
+        personalData.medicalHistory.forEach((item, index) => {
+          response += `  ${index + 1}. ${item}\n`;
+        });
+      }
+
+      response += `\nIs there anything else you'd like to know about your account?`;
+
+      console.log(
+        "[PersonalAgent] Personal data response prepared successfully"
+      );
+
+      return {
+        answer: response,
+        needsEmail: false,
+        personalData,
+      };
+    } catch (error) {
+      console.error("[PersonalAgent] Error fetching personal data:", error);
+      return {
+        answer:
+          "I encountered an error while retrieving your personal information. Please try again or contact support if the issue persists.",
+        needsEmail: false,
+      };
+    }
+  }
+
   const isHistoryRequest =
     query.includes("previous") ||
     query.includes("past") ||
@@ -45,8 +180,18 @@ export async function personalAgent(state: ChatState): Promise<{
     query.includes("before");
 
   if (isHistoryRequest) {
-    // Check if we have user email
-    if (!state.user_email || !state.patientId) {
+    console.log("[PersonalAgent] History request detected");
+    console.log(
+      "[PersonalAgent] State - email:",
+      state.email,
+      "patientId:",
+      state.patientId
+    );
+
+    if (!state.email && !state.patientId) {
+      console.log(
+        "[PersonalAgent] Missing both email and patientId for history"
+      );
       return {
         answer:
           "To retrieve your conversation history, I need your email address. Please provide your registered email address.",
@@ -54,18 +199,40 @@ export async function personalAgent(state: ChatState): Promise<{
       };
     }
 
-    // Fetch conversation history from database
     try {
       const commsCollection = await getCollection<Communication>(
         "communications"
       );
+      const chatHistoryCollection = await getCollection<ChatHistory>(
+        "chat_history"
+      );
+
+      const filter =
+        state.patientId && state.email
+          ? { patientId: state.patientId }
+          : state.patientId
+          ? { patientId: state.patientId }
+          : { patientEmail: state.email };
+
+      console.log(
+        "[PersonalAgent] Fetching communications with filter:",
+        filter
+      );
+
       const conversationHistory = await commsCollection
-        .find({ patientId: state.patientId })
+        .find(filter)
         .sort({ createdAt: -1 })
         .limit(20)
         .toArray();
 
+      console.log(
+        "[PersonalAgent] Found",
+        conversationHistory.length,
+        "records in communications collection"
+      );
+
       if (conversationHistory.length === 0) {
+        console.log("[PersonalAgent] No conversation history found");
         return {
           answer:
             "I couldn't find any previous conversations for your account. This might be your first interaction with our healthcare assistant.",
@@ -74,13 +241,12 @@ export async function personalAgent(state: ChatState): Promise<{
         };
       }
 
-      // Generate summary using Gemini with retry
       const historyText = conversationHistory
         .map((comm, idx) => {
           const date = new Date(comm.createdAt).toLocaleDateString();
           return `${idx + 1}. [${date}] ${comm.type.toUpperCase()}\nQ: ${
-            comm.question
-          }\nA: ${comm.answer}\n`;
+            comm.question || "N/A"
+          }\nA: ${comm.answer || comm.summary || "N/A"}\n`;
         })
         .join("\n");
 
@@ -103,6 +269,7 @@ Requirements:
 - Flow naturally from one point to the next`;
 
       try {
+        console.log("[PersonalAgent] Generating AI summary from history...");
         const response = await retryWithBackoff(
           async () => {
             return await model.generateContent(summaryPrompt);
@@ -114,15 +281,16 @@ Requirements:
         const rawSummary = response.response.text();
         const summary = cleanMarkdown(rawSummary);
 
+        console.log("[PersonalAgent] AI summary generated successfully");
+
         return {
           answer: `${summary}\n\nWould you like details about any specific conversation?`,
           needsEmail: false,
           conversationHistory: conversationHistory,
         };
       } catch (error) {
-        console.error("Error generating summary:", error);
+        console.error("[PersonalAgent] Error generating summary:", error);
 
-        // Fallback: Return basic single paragraph summary
         const topics = Array.from(
           new Set(conversationHistory.map((c) => c.type))
         ).join(", ");
@@ -135,6 +303,8 @@ Requirements:
 
         const basicSummary = `You have ${conversationHistory.length} recorded interactions with our healthcare assistant spanning from ${firstDate} to ${lastDate}. Your conversations have covered topics including ${topics}, with various health-related questions and personalized guidance provided throughout. I'm currently experiencing technical difficulties generating a detailed AI summary, but your complete conversation history has been retrieved successfully.`;
 
+        console.log("[PersonalAgent] Using fallback summary");
+
         return {
           answer: `${basicSummary}\n\nWould you like details about any specific conversation?`,
           needsEmail: false,
@@ -142,7 +312,10 @@ Requirements:
         };
       }
     } catch (error) {
-      console.error("Error fetching conversation history:", error);
+      console.error(
+        "[PersonalAgent] Error fetching conversation history:",
+        error
+      );
       return {
         answer:
           "I encountered an error while retrieving your conversation history. Please try again or contact support if the issue persists.",
@@ -184,7 +357,7 @@ Keep the response warm, personal, and helpful.`;
       needsEmail: false,
     };
   } catch (error) {
-    console.error("Personal agent error after retries:", error);
+    console.error("[PersonalAgent] Personal agent error after retries:", error);
 
     return {
       answer:

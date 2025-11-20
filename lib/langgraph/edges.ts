@@ -29,15 +29,29 @@ export function routeAgent(state: HealthcareGraphStateType): string {
  * Determine if email notification should be sent
  */
 export function shouldSendEmail(state: HealthcareGraphStateType): string {
-  // Send email for emergency or high severity clinical cases
+  // Send email for emergency
   if (state.agent_type === "emergency") {
     return "send_email";
   }
 
+  // Send email for high severity clinical cases
   if (state.agent_type === "clinical" && state.severity === "high") {
     return "send_email";
   }
 
   // Skip email notification
   return "update_history";
+}
+
+export function getCommunicationType(
+  state: HealthcareGraphStateType
+): "clinical" | "faq" | "personal" | "emergency" {
+  if (state.agent_type === "emergency") {
+    return "emergency";
+  } else if (state.agent_type === "personal") {
+    return "personal";
+  } else if (state.agent_type === "generic_faq") {
+    return "faq";
+  }
+  return "clinical";
 }

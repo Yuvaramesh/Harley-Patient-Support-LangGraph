@@ -1,15 +1,14 @@
-// app/api/doctor/communications/route.ts
 import { type NextRequest, NextResponse } from "next/server";
 import { getCollection } from "@/lib/mongodb";
-import type { Communication } from "@/lib/types";
+import type { ChatHistory } from "@/lib/types";
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const patientEmail = searchParams.get("patientEmail");
 
-    const commsCollection = await getCollection<Communication>(
-      "communications"
+    const chatHistoryCollection = await getCollection<ChatHistory>(
+      "chat_history"
     );
 
     // Build query
@@ -22,10 +21,31 @@ export async function GET(request: NextRequest) {
       };
     }
 
-    const communications = await commsCollection
+    const chatHistories = await chatHistoryCollection
       .find(query)
       .sort({ createdAt: -1 })
       .toArray();
+
+    // Transform chat_history records to match Communication interface
+    const communications = chatHistories.map((chat) => {
+      // Get the first user message as initial message
+      const firstUserMessage = chat.messages?.find((m) => m.role === "user");
+
+      return {
+        _id: chat._id,
+        patientId: chat.patientId,
+        patientEmail: chat.patientEmail,
+        type: chat.communicationType || "clinical",
+        question: firstUserMessage?.content || chat.initialMessage || "",
+        answer: chat.summary || "",
+        summary: chat.summary,
+        severity: chat.severity || "medium",
+        status: chat.status || "completed",
+        createdAt: chat.createdAt,
+        timestamp: chat.createdAt,
+        messageCount: chat.messages?.length || 0,
+      };
+    });
 
     // Get unique patient IDs for summary
     const uniquePatients = [...new Set(communications.map((c) => c.patientId))];

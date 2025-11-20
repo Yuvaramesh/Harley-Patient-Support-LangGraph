@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Send, Loader2 } from "lucide-react";
+import { Send, Loader2, RefreshCw, CheckCircle } from "lucide-react";
 
 interface Message {
   role: "user" | "assistant";
@@ -15,14 +15,56 @@ interface Message {
 interface ChatInterfaceProps {
   patientId: string;
   email: string;
+  name?: string;
+  contact?: string;
 }
 
-export function ChatInterface({ patientId, email }: ChatInterfaceProps) {
+export function ChatInterface({
+  patientId,
+  email,
+  name,
+  contact,
+}: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [showWelcome, setShowWelcome] = useState(true);
+  const [summaryCreated, setSummaryCreated] = useState(false);
+  const [creatingAutoSummary, setCreatingAutoSummary] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const storageKey = `chat_messages_${patientId}`;
+
+  useEffect(() => {
+    const loadMessages = () => {
+      try {
+        const stored = sessionStorage.getItem(storageKey);
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          const messagesWithDates = parsed.map((msg: any) => ({
+            ...msg,
+            timestamp: new Date(msg.timestamp),
+          }));
+          setMessages(messagesWithDates);
+          setShowWelcome(messagesWithDates.length === 0);
+        }
+      } catch (error) {
+        console.error("Error loading messages:", error);
+      }
+    };
+
+    loadMessages();
+  }, [patientId, storageKey]);
+
+  useEffect(() => {
+    if (messages.length > 0) {
+      try {
+        sessionStorage.setItem(storageKey, JSON.stringify(messages));
+      } catch (error) {
+        console.error("Error saving messages:", error);
+      }
+    }
+  }, [messages, storageKey]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -31,6 +73,126 @@ export function ChatInterface({ patientId, email }: ChatInterfaceProps) {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  const handleClearChat = () => {
+    if (window.confirm("Are you sure you want to clear the chat history?")) {
+      setMessages([]);
+      setShowWelcome(true);
+      setSummaryCreated(false);
+      sessionStorage.removeItem(storageKey);
+    }
+  };
+
+  const shouldAutoCreateSummary = (assistantMessage: string): boolean => {
+    const completionKeywords = [
+      "sent it to your doctor",
+      "sent to your doctor",
+      "i have sent",
+      "emergency alert sent",
+      "emergency services",
+      "is there anything else",
+      "anything else i can help",
+      "thank you for using",
+    ];
+
+    const lowerMessage = assistantMessage.toLowerCase();
+
+    // Match if message contains completion keywords
+    const matchCount = completionKeywords.filter((keyword) =>
+      lowerMessage.includes(keyword)
+    ).length;
+
+    // Require at least 1 completion keyword
+    return matchCount >= 1;
+  };
+
+  const createAutoSummary = async (
+    conversationMessages: Message[],
+    agentType?: string
+  ) => {
+    if (conversationMessages.length === 0) return;
+
+    if (summaryCreated) {
+      console.log(
+        "[v0] Summary already created for this conversation, skipping duplicate"
+      );
+      return;
+    }
+
+    setCreatingAutoSummary(true);
+    try {
+      const communicationType =
+        agentType === "emergency"
+          ? "emergency"
+          : agentType === "personal"
+          ? "personal"
+          : agentType === "generic_faq"
+          ? "faq"
+          : "clinical";
+
+      const userOnlyMessages = conversationMessages.filter(
+        (msg) => msg.role === "user"
+      );
+
+      const conversationSummary = userOnlyMessages
+        .map((msg) => `Patient: ${msg.content}`)
+        .join("\n\n");
+
+      const response = await fetch("/api/communications/summary", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          patientId,
+          email,
+          messages: conversationMessages, // Send all messages for context
+          conversationSummary, // Send only user messages for summary generation
+          severity: "medium",
+          communicationType,
+          isConversationComplete: true,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        console.error("[v0] Summary API error:", data);
+        if (data.data?.summary) {
+          console.log("[v0] Summary created with fallback method");
+          setSummaryCreated(true);
+          if (communicationType === "emergency") {
+            alert(
+              "Emergency summary has been sent to your doctor. Emergency services have been notified."
+            );
+          } else {
+            alert("Your conversation summary has been saved successfully.");
+          }
+        } else {
+          throw new Error(data.error || "Failed to create summary");
+        }
+      } else {
+        setSummaryCreated(true);
+        console.log(
+          `[v0] Auto-summary created (source: ${data.summarySource})`
+        );
+        if (communicationType === "emergency") {
+          alert(
+            "Emergency summary has been sent to your doctor. Emergency services have been notified."
+          );
+        } else {
+          alert("Your conversation summary has been saved successfully.");
+        }
+      }
+
+      // The summary endpoint already stores both the summary and chat history
+    } catch (error) {
+      console.error("[v0] Error creating auto-summary:", error);
+      alert(
+        "Summary creation encountered an issue, but your conversation was saved."
+      );
+    } finally {
+      setCreatingAutoSummary(false);
+    }
+  };
 
   const handleSendMessage = async () => {
     if (!input.trim()) return;
@@ -47,6 +209,22 @@ export function ChatInterface({ patientId, email }: ChatInterfaceProps) {
     setLoading(true);
 
     try {
+      const messagesToSend = messages.map((msg) => ({
+        role: msg.role,
+        content: msg.content,
+        timestamp:
+          msg.timestamp instanceof Date
+            ? msg.timestamp.toISOString()
+            : msg.timestamp,
+      }));
+
+      console.log("[Chat] Sending message with history:", {
+        patientId,
+        email,
+        query: input,
+        chatHistoryLength: messagesToSend.length,
+      });
+
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -54,17 +232,58 @@ export function ChatInterface({ patientId, email }: ChatInterfaceProps) {
           patientId,
           email,
           query: input,
-          chatHistory: messages,
+          chatHistory: messagesToSend,
         }),
       });
 
       const data = await response.json();
+
+      if (!response.ok) {
+        console.error("[Chat] API returned error status:", response.status);
+        console.error("[Chat] Error response:", data);
+        throw new Error(data.error || "Failed to get response");
+      }
 
       if (data.success) {
         let assistantContent = "";
 
         if (data.agentType === "emergency") {
           assistantContent = `🚨 EMERGENCY DETECTED\n\n${data.response.message}\n\nEmergency Number: ${data.response.emergencyNumber}`;
+
+          if (
+            data.response.nearbyClinicLocations &&
+            data.response.nearbyClinicLocations.length > 0
+          ) {
+            assistantContent += "\n\nNearby Emergency Facilities:\n";
+            data.response.nearbyClinicLocations
+              .slice(0, 3)
+              .forEach((location: string) => {
+                assistantContent += `\n${location}`;
+              });
+          }
+        } else if (
+          data.agentType === "personal" &&
+          data.response.personalData
+        ) {
+          assistantContent = data.response.answer || "";
+
+          const pd = data.response.personalData;
+          if (pd) {
+            assistantContent = `Here is your personal information:\n\n`;
+            if (pd.email) assistantContent += `📧 Email: ${pd.email}\n`;
+            if (pd.name) assistantContent += `👤 Name: ${pd.name}\n`;
+            if (pd.contact) assistantContent += `📞 Contact: ${pd.contact}\n`;
+            if (pd.age) assistantContent += `📅 Age: ${pd.age} years\n`;
+
+            if (pd.medicalHistory && pd.medicalHistory.length > 0) {
+              assistantContent += `\n🏥 Medical History:\n`;
+              pd.medicalHistory.forEach((item: string, index: number) => {
+                assistantContent += `   ${index + 1}. ${item}\n`;
+              });
+            }
+
+            assistantContent += `\nIs there anything else you'd like to know about your account?`;
+          }
         } else if (data.response.answer) {
           assistantContent = data.response.answer;
         } else if (data.response.message) {
@@ -78,6 +297,18 @@ export function ChatInterface({ patientId, email }: ChatInterfaceProps) {
         };
 
         setMessages((prev) => [...prev, assistantMessage]);
+
+        if (shouldAutoCreateSummary(assistantContent) && !summaryCreated) {
+          console.log("[v0] Completion keywords detected, creating summary...");
+          setTimeout(() => {
+            const updatedMessages = [
+              ...messages,
+              userMessage,
+              assistantMessage,
+            ];
+            createAutoSummary(updatedMessages, data.agentType);
+          }, 1000);
+        }
       }
     } catch (error) {
       console.error("Chat error:", error);
@@ -93,13 +324,32 @@ export function ChatInterface({ patientId, email }: ChatInterfaceProps) {
     }
   };
 
+  const displayMessages = messages;
+
   return (
     <Card className="w-full h-full max-w-2xl mx-auto flex flex-col">
       <CardHeader className="border-b">
-        <CardTitle className="text-2xl">Harley Health Portal</CardTitle>
-        <p className="text-sm text-gray-500 mt-2">
-          Chat with our healthcare assistant
-        </p>
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle className="text-2xl">Harley Health Portal</CardTitle>
+            <p className="text-sm text-gray-500 mt-2">
+              Chat with our healthcare assistant
+            </p>
+          </div>
+          <div className="flex gap-2">
+            {messages.length > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleClearChat}
+                className="flex items-center gap-2 bg-transparent"
+              >
+                <RefreshCw className="w-4 h-4" />
+                Clear Chat
+              </Button>
+            )}
+          </div>
+        </div>
       </CardHeader>
 
       <CardContent className="flex-1 flex flex-col p-4 gap-4 overflow-auto">
@@ -118,15 +368,48 @@ export function ChatInterface({ patientId, email }: ChatInterfaceProps) {
                 <li>• Genetic and hereditary health information</li>
                 <li>• General health FAQs</li>
                 <li>• Emergency situation assessment</li>
+                <li>• Personal account information</li>
+                <li>• Conversation history summaries</li>
               </ul>
               <p className="text-xs text-gray-500 mt-3">
-                Note: For emergencies, please call 911 immediately.
+                When you finish your conversation, a summary will automatically
+                be created and sent to your Communications tab.
               </p>
             </div>
           </div>
         )}
 
-        {messages.map((message, index) => (
+        {summaryCreated && (
+          <div className="bg-green-50 border border-green-200 rounded-lg p-4 flex items-start gap-3">
+            <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-semibold text-green-800">
+                Summary Created
+              </p>
+              <p className="text-sm text-green-700">
+                Your conversation summary has been automatically saved and sent
+                to the Communications tab with timestamp.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {creatingAutoSummary && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-start gap-3">
+            <Loader2 className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5 animate-spin" />
+            <div>
+              <p className="text-sm font-semibold text-blue-800">
+                Creating Summary
+              </p>
+              <p className="text-sm text-blue-700">
+                Your conversation summary is being created and sent to both
+                dashboards...
+              </p>
+            </div>
+          </div>
+        )}
+
+        {displayMessages.map((message, index) => (
           <div
             key={index}
             className={`flex items-start gap-3 ${
