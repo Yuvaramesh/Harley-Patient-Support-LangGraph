@@ -65,7 +65,6 @@ export function DoctorDashboard({ doctorEmail }: DoctorDashboardProps) {
       if (data.success) {
         setCommunications(data.communications);
 
-        // Fetch patient info for each communication
         data.communications.forEach(async (comm: Communication) => {
           if (comm.patientEmail && !patientInfo.has(comm.patientId)) {
             try {
@@ -96,7 +95,6 @@ export function DoctorDashboard({ doctorEmail }: DoctorDashboardProps) {
   const applyFilters = () => {
     let filtered = [...communications];
 
-    // Email filter
     if (emailFilter.trim()) {
       filtered = filtered.filter(
         (comm) =>
@@ -111,12 +109,82 @@ export function DoctorDashboard({ doctorEmail }: DoctorDashboardProps) {
       filtered = filtered.filter((comm) => comm.type === typeFilter);
     }
 
-    // Severity filter
     if (severityFilter !== "all") {
       filtered = filtered.filter((comm) => comm.severity === severityFilter);
     }
 
     setFilteredComms(filtered);
+  };
+
+  const formatSummary = (text: string) => {
+    if (!text) return null;
+
+    // Remove all asterisks for bold markers
+    let formatted = text.replace(/\*\*/g, "");
+
+    // Split by double newlines to get sections
+    const sections = formatted.split("\n\n");
+
+    return sections.map((section, idx) => {
+      const lines = section.split("\n");
+      const firstLine = lines[0];
+
+      // Check if this is a header (ends with : or is all caps-ish)
+      const isHeader =
+        firstLine.endsWith(":") ||
+        (firstLine.length < 50 && firstLine === firstLine.toUpperCase());
+
+      if (isHeader && lines.length > 1) {
+        return (
+          <div key={idx} className="mb-4">
+            <h4 className="font-semibold text-gray-900 mb-2">{firstLine}</h4>
+            <div className="ml-4 space-y-1">
+              {lines.slice(1).map((line, lineIdx) => {
+                if (!line.trim()) return null;
+
+                // Detect bullet points
+                const isBullet = line.trim().match(/^(\d+\.|\•|-|\*)/);
+                const cleanLine = line.replace(/^(\s*(\d+\.|\•|-|\*)\s*)/, "");
+
+                return (
+                  <div key={lineIdx} className={isBullet ? "flex gap-2" : ""}>
+                    {isBullet && <span className="text-gray-600">•</span>}
+                    <p className="text-gray-700">{cleanLine}</p>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      } else {
+        // Regular paragraph or single line
+        return (
+          <div key={idx} className="mb-3">
+            {lines.map((line, lineIdx) => {
+              if (!line.trim()) return null;
+
+              const isBullet = line.trim().match(/^(\d+\.|\•|-|\*)/);
+              const cleanLine = line.replace(/^(\s*(\d+\.|\•|-|\*)\s*)/, "");
+
+              if (isBullet) {
+                return (
+                  <div key={lineIdx} className="flex gap-2 mb-1">
+                    <span className="text-gray-600">•</span>
+                    <p className="text-gray-700">{cleanLine}</p>
+                  </div>
+                );
+              }
+
+              return (
+                <p key={lineIdx} className="text-gray-700 mb-1">
+                  {line}
+                </p>
+              );
+            })}
+          </div>
+        );
+      }
+    });
   };
 
   const getSeverityColor = (severity?: string) => {
@@ -163,7 +231,7 @@ export function DoctorDashboard({ doctorEmail }: DoctorDashboardProps) {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 p-6 bg-gray-50 min-h-screen">
       {/* Header Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="bg-white rounded-lg shadow p-6">
@@ -190,7 +258,7 @@ export function DoctorDashboard({ doctorEmail }: DoctorDashboardProps) {
           </div>
         </div>
 
-        {/* <div className="bg-white rounded-lg shadow p-6">
+        <div className="bg-white rounded-lg shadow p-6">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-600">High Severity</p>
@@ -204,7 +272,7 @@ export function DoctorDashboard({ doctorEmail }: DoctorDashboardProps) {
             </div>
             <AlertCircle className="h-8 w-8 text-red-600" />
           </div>
-        </div> */}
+        </div>
 
         <div className="bg-white rounded-lg shadow p-6">
           <div className="flex items-center justify-between">
@@ -310,7 +378,7 @@ export function DoctorDashboard({ doctorEmail }: DoctorDashboardProps) {
               const patient = patientInfo.get(comm.patientId);
               return (
                 <div key={comm._id} className="p-6 hover:bg-gray-50 transition">
-                  <div className="flex items-start justify-between mb-3">
+                  <div className="flex items-start justify-between mb-4">
                     <div className="flex items-center gap-3">
                       <span
                         className={`px-3 py-1 rounded-full text-xs font-semibold ${getTypeColor(
@@ -340,45 +408,71 @@ export function DoctorDashboard({ doctorEmail }: DoctorDashboardProps) {
 
                   {/* Patient Information */}
                   {patient ? (
-                    <div className="mb-3 bg-blue-50 rounded p-3 border border-blue-200">
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-sm">
+                    <div className="mb-4 bg-blue-50 rounded-lg p-4 border border-blue-200">
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                         <div>
-                          <p className="text-gray-600">Name:</p>
+                          <p className="text-xs text-gray-600 mb-1">
+                            Patient Name
+                          </p>
                           <p className="font-semibold text-gray-900">
                             {patient.name}
                           </p>
                         </div>
-                        <div className="flex items-center gap-1">
-                          <Mail className="h-4 w-4 text-gray-600" />
-                          <p className="text-gray-900">{patient.email}</p>
+                        <div className="flex items-center gap-2">
+                          <Mail className="h-4 w-4 text-gray-600 flex-shrink-0" />
+                          <div className="min-w-0">
+                            <p className="text-xs text-gray-600">Email</p>
+                            <p className="text-sm text-gray-900 truncate">
+                              {patient.email}
+                            </p>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-1">
-                          <Phone className="h-4 w-4 text-gray-600" />
-                          <p className="text-gray-900">{patient.contact}</p>
+                        <div className="flex items-center gap-2">
+                          <Phone className="h-4 w-4 text-gray-600 flex-shrink-0" />
+                          <div>
+                            <p className="text-xs text-gray-600">Contact</p>
+                            <p className="text-sm text-gray-900">
+                              {patient.contact}
+                            </p>
+                          </div>
                         </div>
                       </div>
                     </div>
                   ) : (
-                    <div className="mb-3 text-sm text-gray-500">
-                      <p>Patient ID: {comm.patientId}</p>
-                      <p>Email: {comm.patientEmail}</p>
+                    <div className="mb-4 bg-gray-50 rounded-lg p-3 border border-gray-200">
+                      <p className="text-sm text-gray-600">
+                        Patient ID:{" "}
+                        <span className="font-medium text-gray-900">
+                          {comm.patientId}
+                        </span>
+                      </p>
+                      <p className="text-sm text-gray-600">
+                        Email:{" "}
+                        <span className="font-medium text-gray-900">
+                          {comm.patientEmail}
+                        </span>
+                      </p>
                     </div>
                   )}
 
-                  {/* Summary */}
-                  <div className="bg-gray-50 rounded-lg p-4">
-                    <p className="text-sm font-semibold text-gray-700 mb-2">
-                      Conversation Summary ({comm.messageCount || "multiple"}{" "}
-                      messages):
-                    </p>
-                    <p className="text-sm text-gray-900 whitespace-pre-wrap line-clamp-6">
-                      {comm.summary || comm.answer}
-                    </p>
+                  {/* Professional Summary */}
+                  <div className="bg-white rounded-lg border border-gray-200 p-5">
+                    <div className="flex items-center justify-between mb-3 pb-2 border-b border-gray-200">
+                      <h4 className="text-base font-semibold text-gray-900">
+                        Medical Summary
+                      </h4>
+                      <span className="text-xs text-gray-500">
+                        {comm.messageCount || "Multiple"} messages
+                      </span>
+                    </div>
+                    <div className="prose prose-sm max-w-none">
+                      {formatSummary(comm.summary || comm.answer)}
+                    </div>
                   </div>
 
-                  <div className="mt-3 flex items-center gap-4 text-xs text-gray-500">
+                  <div className="mt-3 flex items-center gap-4 text-xs">
                     <span
-                      className={`px-2 py-1 rounded ${
+                      className={`px-3 py-1 rounded-full font-medium ${
                         comm.status === "completed"
                           ? "bg-green-100 text-green-800"
                           : comm.status === "in_progress"
@@ -386,7 +480,7 @@ export function DoctorDashboard({ doctorEmail }: DoctorDashboardProps) {
                           : "bg-gray-100 text-gray-800"
                       }`}
                     >
-                      Status: {comm.status}
+                      Status: {comm.status.replace(/_/g, " ").toUpperCase()}
                     </span>
                   </div>
                 </div>

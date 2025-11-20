@@ -53,6 +53,81 @@ export function CommunicationsDashboard({
       ? communications
       : communications.filter((comm) => comm.severity === filter);
 
+  const formatSummary = (text: string) => {
+    if (!text) return null;
+
+    // Remove all asterisks for bold markers
+    let formatted = text.replace(/\*\*/g, "");
+
+    // Split by double newlines to get sections
+    const sections = formatted.split("\n\n");
+
+    return sections.map((section, idx) => {
+      const lines = section.split("\n");
+      const firstLine = lines[0];
+
+      // Check if this is a header (ends with : or is all caps-ish)
+      const isHeader =
+        firstLine.endsWith(":") ||
+        (firstLine.length < 50 && firstLine === firstLine.toUpperCase());
+
+      if (isHeader && lines.length > 1) {
+        return (
+          <div key={idx} className="mb-4">
+            <h4 className="font-semibold text-gray-900 mb-2 text-sm">
+              {firstLine}
+            </h4>
+            <div className="ml-3 space-y-1">
+              {lines.slice(1).map((line, lineIdx) => {
+                if (!line.trim()) return null;
+
+                // Detect bullet points
+                const isBullet = line.trim().match(/^(\d+\.|\•|-|\*)/);
+                const cleanLine = line.replace(/^(\s*(\d+\.|\•|-|\*)\s*)/, "");
+
+                return (
+                  <div key={lineIdx} className={isBullet ? "flex gap-2" : ""}>
+                    {isBullet && (
+                      <span className="text-gray-600 text-sm">•</span>
+                    )}
+                    <p className="text-gray-700 text-sm">{cleanLine}</p>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      } else {
+        // Regular paragraph or single line
+        return (
+          <div key={idx} className="mb-3">
+            {lines.map((line, lineIdx) => {
+              if (!line.trim()) return null;
+
+              const isBullet = line.trim().match(/^(\d+\.|\•|-|\*)/);
+              const cleanLine = line.replace(/^(\s*(\d+\.|\•|-|\*)\s*)/, "");
+
+              if (isBullet) {
+                return (
+                  <div key={lineIdx} className="flex gap-2 mb-1">
+                    <span className="text-gray-600 text-sm">•</span>
+                    <p className="text-gray-700 text-sm">{cleanLine}</p>
+                  </div>
+                );
+              }
+
+              return (
+                <p key={lineIdx} className="text-gray-700 text-sm mb-1">
+                  {line}
+                </p>
+              );
+            })}
+          </div>
+        );
+      }
+    });
+  };
+
   const getStatusIcon = (status: string) => {
     switch (status) {
       case "completed":
@@ -105,7 +180,7 @@ export function CommunicationsDashboard({
           Your saved conversation summaries with timestamps
         </p>
         <div className="flex gap-2 mt-4 flex-wrap">
-          <div className="flex gap-2">
+          <div className="flex gap-2 items-center">
             <label className="text-sm font-medium text-gray-700">Type:</label>
             {["all", "clinical", "faq", "personal"].map((t) => (
               <button
@@ -122,7 +197,7 @@ export function CommunicationsDashboard({
             ))}
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex gap-2 items-center">
             <label className="text-sm font-medium text-gray-700">
               Severity:
             </label>
@@ -145,27 +220,41 @@ export function CommunicationsDashboard({
 
       <CardContent>
         {loading ? (
-          <p className="text-center text-gray-500">Loading summaries...</p>
+          <div className="flex items-center justify-center py-8">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600 mx-auto"></div>
+              <p className="mt-3 text-gray-500">Loading summaries...</p>
+            </div>
+          </div>
         ) : filteredCommunications.length === 0 ? (
-          <p className="text-center text-gray-500">
-            No conversation summaries yet. Complete a chat and create a summary
-            to see it here.
-          </p>
+          <div className="text-center py-8">
+            <MessageSquare className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+            <p className="text-gray-500">
+              No conversation summaries yet. Complete a chat and create a
+              summary to see it here.
+            </p>
+          </div>
         ) : (
           <div className="space-y-4">
             {filteredCommunications.map((comm) => (
               <div
                 key={comm._id}
-                className="border rounded-lg p-4 hover:shadow-md transition"
+                className="border border-gray-200 rounded-lg p-5 hover:shadow-md transition bg-white"
               >
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex items-center gap-2">
+                <div className="flex items-start justify-between mb-4">
+                  <div className="flex items-center gap-2 flex-wrap">
                     {getStatusIcon(comm.status)}
-                    <Badge variant={getTypeColor(comm.type)}>
+                    <Badge
+                      variant={getTypeColor(comm.type)}
+                      className="font-semibold"
+                    >
                       {comm.type.toUpperCase()}
                     </Badge>
-                    <Badge variant={getSeverityColor(comm.severity)}>
-                      {comm.severity || "medium"}
+                    <Badge
+                      variant={getSeverityColor(comm.severity)}
+                      className="font-semibold"
+                    >
+                      {(comm.severity || "medium").toUpperCase()}
                     </Badge>
                   </div>
                   <div className="flex items-center gap-2 text-xs text-gray-500">
@@ -177,18 +266,25 @@ export function CommunicationsDashboard({
                 </div>
 
                 {comm.messageCount && (
-                  <p className="text-xs text-gray-500 mb-2">
-                    Conversation: {comm.messageCount} messages
-                  </p>
+                  <div className="mb-3 pb-3 border-b border-gray-100">
+                    <p className="text-xs text-gray-500">
+                      Conversation:{" "}
+                      <span className="font-medium text-gray-700">
+                        {comm.messageCount} messages
+                      </span>
+                    </p>
+                  </div>
                 )}
 
-                <div className="bg-gray-50 p-3 rounded">
-                  <p className="text-sm font-medium text-gray-900 mb-2">
-                    Summary:
-                  </p>
-                  <p className="text-sm text-gray-700 whitespace-pre-wrap line-clamp-4">
-                    {comm.summary}
-                  </p>
+                <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
+                  <div className="mb-3 pb-2 border-b border-gray-300">
+                    <h4 className="text-sm font-semibold text-gray-900">
+                      Medical Summary
+                    </h4>
+                  </div>
+                  <div className="prose prose-sm max-w-none">
+                    {formatSummary(comm.summary)}
+                  </div>
                 </div>
               </div>
             ))}
