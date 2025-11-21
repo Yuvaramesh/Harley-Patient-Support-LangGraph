@@ -29,24 +29,12 @@ function cleanMarkdown(text: string): string {
 
 /**
  * Check if enough information has been gathered
- * Fixed to count Q/A pairs correctly (user + assistant = 1 pair)
- * Should trigger after 5 pairs = 10 total messages (5 user + 5 assistant)
+ * Trigger summary when 5 user questions have been asked (qaPairCount = 5)
+ * This means: Q1-Q4 get AI questions, Q5 gets the summary message
  */
-function hasEnoughInformation(chatHistory: any[]): boolean {
-  if (!Array.isArray(chatHistory)) {
-    console.warn(
-      "[v0] chatHistory is not an array, returning false",
-      typeof chatHistory
-    );
-    return false;
-  }
-
-  // Count Q/A pairs: each pair = 1 user message + 1 assistant message
-  const qaPairCount = Math.floor(chatHistory.length / 2);
-
-  // Need exactly 5 Q/A exchanges to trigger summary
+function hasEnoughInformation(qaPairCount: number): boolean {
+  // Trigger summary when exactly 5 questions asked
   console.log("[Clinical Agent] Q/A pair check:", {
-    totalMessages: chatHistory.length,
     qaPairCount,
     readyForSummary: qaPairCount >= 5,
   });
@@ -78,7 +66,7 @@ export async function clinicalAgent(state: ChatState): Promise<{
   summary?: string;
   isSummaryResponse?: boolean;
 }> {
-  const hasEnoughInfo = hasEnoughInformation(state.chat_history || []);
+  const hasEnoughInfo = hasEnoughInformation(state.qaPairCount || 0);
 
   // If ready for summary (5 Q/A exchanges reached)
   if (hasEnoughInfo) {
@@ -140,7 +128,7 @@ SEVERITY: [low/medium/high/critical]`;
 
       return {
         answer:
-          "Thanks for providing all the information. I've created a summary and will send it to your doctor. They will review it and contact you if needed.",
+          "Thanks for providing all the information. I will create a summary and give it to your doctor.",
         severity,
         needsSummary: false,
         summary: summaryText,
