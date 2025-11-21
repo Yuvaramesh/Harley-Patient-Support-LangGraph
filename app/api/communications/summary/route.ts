@@ -1,6 +1,10 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { getCollection } from "@/lib/mongodb";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import {
+  sendEmergencySummaryToDoctor,
+  sendEmergencyAlert,
+} from "@/lib/email-service";
 
 const genai = new GoogleGenerativeAI(process.env.NEXT_PUBLIC_GEMINI_API_KEY!);
 const model = genai.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
@@ -22,12 +26,10 @@ async function generateSummaryWithRetry(
     } catch (error: any) {
       console.error(`[v0] Attempt ${attempt} failed:`, error.message);
 
-      // If it's the last attempt or a non-retryable error, throw
       if (attempt === maxRetries || !isRetryableError(error)) {
         throw error;
       }
 
-      // Exponential backoff: 1s, 2s, 4s
       const delayMs = Math.pow(2, attempt - 1) * 1000;
       console.log(`[v0] Retrying in ${delayMs}ms...`);
       await new Promise((resolve) => setTimeout(resolve, delayMs));
@@ -56,7 +58,6 @@ function createFallbackSummary(messages: any[]): string {
   let summary = "**Conversation Summary**\n\n";
   summary += `Total exchanges: ${Math.ceil(messages.length / 2)}\n\n`;
 
-  // Extract key information
   const userMessages = messages.filter((m: any) => m.role === "user");
   const assistantMessages = messages.filter((m: any) => m.role === "assistant");
 
@@ -86,12 +87,29 @@ function createFallbackSummary(messages: any[]): string {
   return summary;
 }
 
-// Helper to determine if summary should be sent to patient
+async function getDoctorEmailForPatient(
+  patientId: string
+): Promise<string | null> {
+  try {
+    const patientsCollection = await getCollection("patients");
+    const patient = await patientsCollection.findOne({ patientId });
+
+    if (patient && (patient as any).assignedDoctorEmail) {
+      return (patient as any).assignedDoctorEmail;
+    }
+
+    // Fallback: check if there's a default doctor email in environment
+    return process.env.DEFAULT_DOCTOR_EMAIL || null;
+  } catch (error) {
+    console.error("[v0] Error fetching doctor email:", error);
+    return null;
+  }
+}
+
 async function shouldSendToPatient(
   messages: any[],
   communicationType: string
 ): Promise<boolean> {
-  // Emergency summaries are only sent to doctor, not patient
   if (communicationType === "emergency") {
     return false;
   }
@@ -131,7 +149,6 @@ export async function POST(request: NextRequest) {
       } summary for patient ${patientId} with ${messages.length} messages`
     );
 
-    // Convert messages to conversation text
     const conversationText = messages
       .map(
         (msg: any) =>
@@ -185,9 +202,62 @@ export async function POST(request: NextRequest) {
         sessionId,
         qaPairCount,
         communicationType: commType,
+        severity,
         sentToPatient,
       }
     );
+
+    let emailSent = false;
+    if (severity === "high" || severity === "critical") {
+      console.log(
+        `[v0] Emergency severity detected (${severity}), sending emergency emails`
+      );
+
+      const doctorEmail = await getDoctorEmailForPatient(patientId);
+
+      // Send alert to patient
+      const patientAlertSent = await sendEmergencyAlert(
+        email,
+        `Based on your recent conversation, our system has detected a potentially serious health concern. Please seek immediate medical attention or contact emergency services if necessary.`
+      );
+
+      // Send detailed summary to doctor
+      let doctorEmailSent = false;
+      if (doctorEmail) {
+        const patientsCollection = await getCollection("patients");
+        const patient = await patientsCollection.findOne({ patientId });
+
+        doctorEmailSent = await sendEmergencySummaryToDoctor(
+          doctorEmail,
+          (patient as any)?.name || "Unknown Patient",
+          (patient as any)?.contact || email,
+          `Patient reported symptoms that may require urgent attention. Severity level: ${severity}`,
+          summary
+        );
+      } else {
+        console.warn(
+          "[v0] No doctor email found for patient, skipping doctor notification"
+        );
+      }
+
+      emailSent = patientAlertSent && doctorEmailSent;
+      console.log(
+        `[v0] Emergency emails sent - Patient: ${patientAlertSent}, Doctor: ${doctorEmailSent}`
+      );
+
+      // Update the summary record to mark emails as sent
+      if (emailSent) {
+        await chatHistoryCollection.updateOne(
+          { _id: result.insertedId },
+          {
+            $set: {
+              emailSent: true,
+              emergencyEmailsSent: { doctor: true, patient: true },
+            },
+          }
+        );
+      }
+    }
 
     return NextResponse.json({
       success: true,
@@ -195,6 +265,8 @@ export async function POST(request: NextRequest) {
       summarySource,
       sentToPatient,
       communicationType: commType,
+      emergencyEmailsSent:
+        severity === "high" || severity === "critical" ? emailSent : undefined,
       data: {
         id: result.insertedId,
         ...summaryRecord,
