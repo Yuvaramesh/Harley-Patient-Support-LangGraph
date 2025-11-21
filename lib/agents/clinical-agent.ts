@@ -29,17 +29,16 @@ function cleanMarkdown(text: string): string {
 
 /**
  * Check if enough information has been gathered
- * Trigger summary when 5 user questions have been asked (qaPairCount = 5)
+ * Trigger summary when 5th user question is being asked (qaPairCount = 4, which means 4 previous exchanges)
  * This means: Q1-Q4 get AI questions, Q5 gets the summary message
  */
 function hasEnoughInformation(qaPairCount: number): boolean {
-  // Trigger summary when exactly 5 questions asked
   console.log("[Clinical Agent] Q/A pair check:", {
     qaPairCount,
-    readyForSummary: qaPairCount >= 5,
+    readyForSummary: qaPairCount >= 4,
   });
 
-  return qaPairCount >= 5;
+  return qaPairCount >= 4;
 }
 
 function formatBufferMemory(chatHistory: any[], sessionId?: string): string {
