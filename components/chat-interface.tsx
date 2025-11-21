@@ -31,14 +31,27 @@ export function ChatInterface({
   const [showWelcome, setShowWelcome] = useState(true);
   const [summaryCreated, setSummaryCreated] = useState(false);
   const [creatingAutoSummary, setCreatingAutoSummary] = useState(false);
+  const [sessionId, setSessionId] = useState<string>("");
+  const [qaPairCount, setQaPairCount] = useState(0);
+  const [displayedSummary, setDisplayedSummary] = useState<string>("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const storageKey = `chat_messages_${patientId}`;
+  const sessionStorageKey = `session_id_${patientId}`;
 
   useEffect(() => {
     const loadMessages = () => {
       try {
         const stored = sessionStorage.getItem(storageKey);
+        let currentSessionId = sessionStorage.getItem(sessionStorageKey);
+        if (!currentSessionId) {
+          currentSessionId = `session_${Date.now()}_${Math.random()
+            .toString(36)
+            .substr(2, 9)}`;
+          sessionStorage.setItem(sessionStorageKey, currentSessionId);
+        }
+        setSessionId(currentSessionId);
+
         if (stored) {
           const parsed = JSON.parse(stored);
           const messagesWithDates = parsed.map((msg: any) => ({
@@ -47,6 +60,10 @@ export function ChatInterface({
           }));
           setMessages(messagesWithDates);
           setShowWelcome(messagesWithDates.length === 0);
+          const userMessages = messagesWithDates.filter(
+            (m: Message) => m.role === "user"
+          ).length;
+          setQaPairCount(userMessages);
         }
       } catch (error) {
         console.error("Error loading messages:", error);
@@ -54,7 +71,7 @@ export function ChatInterface({
     };
 
     loadMessages();
-  }, [patientId, storageKey]);
+  }, [patientId, storageKey, sessionStorageKey]);
 
   useEffect(() => {
     if (messages.length > 0) {
@@ -79,7 +96,15 @@ export function ChatInterface({
       setMessages([]);
       setShowWelcome(true);
       setSummaryCreated(false);
+      setDisplayedSummary("");
+      setQaPairCount(0);
       sessionStorage.removeItem(storageKey);
+      sessionStorage.removeItem(sessionStorageKey);
+      const newSessionId = `session_${Date.now()}_${Math.random()
+        .toString(36)
+        .substr(2, 9)}`;
+      sessionStorage.setItem(sessionStorageKey, newSessionId);
+      setSessionId(newSessionId);
     }
   };
 
@@ -96,13 +121,10 @@ export function ChatInterface({
     ];
 
     const lowerMessage = assistantMessage.toLowerCase();
-
-    // Match if message contains completion keywords
     const matchCount = completionKeywords.filter((keyword) =>
       lowerMessage.includes(keyword)
     ).length;
 
-    // Require at least 1 completion keyword
     return matchCount >= 1;
   };
 
@@ -130,24 +152,17 @@ export function ChatInterface({
           ? "faq"
           : "clinical";
 
-      const userOnlyMessages = conversationMessages.filter(
-        (msg) => msg.role === "user"
-      );
-
-      const conversationSummary = userOnlyMessages
-        .map((msg) => `Patient: ${msg.content}`)
-        .join("\n\n");
-
       const response = await fetch("/api/communications/summary", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           patientId,
           email,
-          messages: conversationMessages, // Send all messages for context
-          conversationSummary, // Send only user messages for summary generation
+          messages: conversationMessages,
           severity: "medium",
           communicationType,
+          sessionId,
+          qaPairCount,
           isConversationComplete: true,
         }),
       });
@@ -172,7 +187,7 @@ export function ChatInterface({
       } else {
         setSummaryCreated(true);
         console.log(
-          `[v0] Auto-summary created (source: ${data.summarySource})`
+          `[v0] Summary created successfully (${data.summarySource})`
         );
         if (communicationType === "emergency") {
           alert(
@@ -182,8 +197,6 @@ export function ChatInterface({
           alert("Your conversation summary has been saved successfully.");
         }
       }
-
-      // The summary endpoint already stores both the summary and chat history
     } catch (error) {
       console.error("[v0] Error creating auto-summary:", error);
       alert(
@@ -222,6 +235,7 @@ export function ChatInterface({
         patientId,
         email,
         query: input,
+        sessionId,
         chatHistoryLength: messagesToSend.length,
       });
 
@@ -233,6 +247,7 @@ export function ChatInterface({
           email,
           query: input,
           chatHistory: messagesToSend,
+          sessionId,
         }),
       });
 
@@ -298,7 +313,32 @@ export function ChatInterface({
 
         setMessages((prev) => [...prev, assistantMessage]);
 
-        if (shouldAutoCreateSummary(assistantContent) && !summaryCreated) {
+        const newQAPairCount = qaPairCount + 1;
+        setQaPairCount(newQAPairCount);
+
+        if (data.summary && data.agentType === "clinical") {
+          setDisplayedSummary(data.summary);
+          setSummaryCreated(true);
+        }
+
+        if (
+          data.agentType === "clinical" &&
+          newQAPairCount >= 5 &&
+          !summaryCreated
+        ) {
+          console.log("[v0] 5 Q/A pairs reached, creating summary...");
+          setTimeout(() => {
+            const updatedMessages = [
+              ...messages,
+              userMessage,
+              assistantMessage,
+            ];
+            createAutoSummary(updatedMessages, data.agentType);
+          }, 1000);
+        } else if (
+          shouldAutoCreateSummary(assistantContent) &&
+          !summaryCreated
+        ) {
           console.log("[v0] Completion keywords detected, creating summary...");
           setTimeout(() => {
             const updatedMessages = [
@@ -335,6 +375,12 @@ export function ChatInterface({
             <p className="text-sm text-gray-500 mt-2">
               Chat with our healthcare assistant
             </p>
+            {sessionId && (
+              <p className="text-xs text-gray-400 mt-1">
+                Session: {sessionId.substring(0, 12)}... | Q/A Pairs:{" "}
+                {qaPairCount}/5
+              </p>
+            )}
           </div>
           <div className="flex gap-2">
             {messages.length > 0 && (
@@ -372,14 +418,51 @@ export function ChatInterface({
                 <li>• Conversation history summaries</li>
               </ul>
               <p className="text-xs text-gray-500 mt-3">
-                When you finish your conversation, a summary will automatically
-                be created and sent to your Communications tab.
+                After 5 Q/A exchanges, a summary will automatically be created
+                and sent to your Communications tab.
               </p>
             </div>
           </div>
         )}
 
-        {summaryCreated && (
+        {messages.length > 0 && !summaryCreated && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-start gap-3">
+            <div className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5">
+              <span className="text-sm font-semibold">{qaPairCount}/5</span>
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-blue-800">
+                Conversation Progress
+              </p>
+              <p className="text-sm text-blue-700">
+                {qaPairCount < 5
+                  ? `${
+                      5 - qaPairCount
+                    } more Q/A exchanges until automatic summary is created.`
+                  : "Summary is being created..."}
+              </p>
+            </div>
+          </div>
+        )}
+
+        {displayedSummary && (
+          <div className="bg-green-50 border border-green-200 rounded-lg p-4 flex items-start gap-3">
+            <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-green-800">
+                Conversation Summary
+              </p>
+              <p className="text-sm text-green-700 mt-2 whitespace-pre-wrap">
+                {displayedSummary}
+              </p>
+              <p className="text-xs text-green-600 mt-2">
+                This summary has been sent to your doctor's dashboard.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {summaryCreated && !displayedSummary && (
           <div className="bg-green-50 border border-green-200 rounded-lg p-4 flex items-start gap-3">
             <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
             <div>

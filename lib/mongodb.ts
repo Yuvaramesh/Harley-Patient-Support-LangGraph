@@ -46,6 +46,7 @@ export async function initializeCollections() {
   // Chat history collection
   await db.collection("chat_history").createIndex({ patientId: 1 });
   await db.collection("chat_history").createIndex({ createdAt: -1 });
+  await db.collection("chat_history").createIndex({ sessionId: 1 });
 
   // Communications collection
   await db.collection("communications").createIndex({ patientId: 1 });

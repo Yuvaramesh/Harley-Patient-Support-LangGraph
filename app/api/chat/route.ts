@@ -1,14 +1,21 @@
-// app/api/chat/route.ts
 import { type NextRequest, NextResponse } from "next/server";
 import { runHealthcareGraph } from "@/lib/langgraph/graph";
 import type { ChatMessage } from "@/lib/types";
+import { v4 as uuidv4 } from "uuid";
+import { getCollection } from "@/lib/mongodb";
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     console.log("[API] Raw request body:", JSON.stringify(body, null, 2));
 
-    const { patientId, email, query, chatHistory } = body;
+    const {
+      patientId,
+      email,
+      query,
+      chatHistory,
+      sessionId: providedSessionId,
+    } = body;
 
     console.log("[API] Extracted fields:", {
       patientId: patientId ? "present" : "MISSING",
@@ -17,6 +24,7 @@ export async function POST(request: NextRequest) {
       chatHistory: chatHistory
         ? `present (${chatHistory.length} items)`
         : "empty",
+      sessionId: providedSessionId ? "present" : "will generate",
     });
 
     if (!patientId || !query) {
@@ -26,13 +34,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const sessionId = providedSessionId || uuidv4();
+
     console.log("[API] Received chat request:", {
       patientId,
       query,
       email,
+      sessionId,
     });
 
-    const formattedChatHistory: ChatMessage[] = (chatHistory || []).map(
+    let fullChatHistory: ChatMessage[] = (chatHistory || []).map(
       (msg: any) => ({
         role: msg.role || "user",
         content: msg.content || "",
@@ -40,16 +51,65 @@ export async function POST(request: NextRequest) {
       })
     );
 
-    // Build initial state for LangGraph
+    // If sessionId is provided and chatHistory is empty, fetch from database
+    if (providedSessionId && (!chatHistory || chatHistory.length === 0)) {
+      try {
+        const chatHistoryCollection = await getCollection("chat_history");
+        const sessionHistory = await chatHistoryCollection
+          .find({ sessionId: providedSessionId })
+          .sort({ createdAt: 1 })
+          .toArray();
+
+        if (sessionHistory && sessionHistory.length > 0) {
+          console.log("[API] Retrieved session history from database:", {
+            sessionId: providedSessionId,
+            messageCount: sessionHistory.length,
+          });
+
+          // Extract chat messages from stored history
+          fullChatHistory = sessionHistory.flatMap((record: any) => {
+            const messages: ChatMessage[] = [];
+            if (record.question) {
+              messages.push({
+                role: "user",
+                content: record.question,
+                timestamp: record.createdAt || new Date(),
+              });
+            }
+            if (record.answer) {
+              messages.push({
+                role: "assistant",
+                content: record.answer,
+                timestamp: record.createdAt || new Date(),
+              });
+            }
+            return messages;
+          });
+        }
+      } catch (dbError) {
+        console.warn(
+          "[API] Failed to fetch session history from database:",
+          dbError
+        );
+        // Continue with empty history if database fetch fails
+      }
+    }
+
     const initialState = {
       patientId,
       query,
-      chat_history: formattedChatHistory,
+      chat_history: fullChatHistory,
       user_email: email,
-      email: email, // Explicitly set email field for consistent access
+      email: email,
+      sessionId,
+      qaPairCount: Math.floor(fullChatHistory.length / 2),
     };
 
-    // Execute the LangGraph
+    console.log(
+      "[API] Initial state Q/A pair count:",
+      initialState.qaPairCount
+    );
+
     console.log("[API] Executing LangGraph...");
     const result = await runHealthcareGraph(initialState);
 
@@ -59,7 +119,6 @@ export async function POST(request: NextRequest) {
       answer: result.answer,
     };
 
-    // Add agent-specific fields
     if (result.agent_type === "emergency") {
       response = {
         message: result.emergencyMessage || result.answer,
@@ -79,11 +138,12 @@ export async function POST(request: NextRequest) {
         answer: result.answer,
         needsEmail: result.needsEmail,
         conversationHistory: result.conversationHistory,
-        personalData: result.personalData, // Include personal data from patients collection
+        personalData: result.personalData,
       };
     }
 
-    // Return successful response
+    const finalQaPairCount = Math.floor((fullChatHistory.length + 2) / 2);
+
     return NextResponse.json({
       success: true,
       agentType: result.agent_type,
@@ -91,6 +151,10 @@ export async function POST(request: NextRequest) {
       response,
       emailSent: result.emailSent,
       communicationId: result.communicationId,
+      sessionId,
+      qaPairCount: finalQaPairCount,
+      summary: result.summary,
+      isSummaryResponse: result.isSummaryResponse,
     });
   } catch (error) {
     console.error("[API] Chat API error:", error);

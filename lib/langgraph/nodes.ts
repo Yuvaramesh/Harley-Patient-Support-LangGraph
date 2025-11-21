@@ -69,13 +69,18 @@ export async function clinicalNode(
   const clinical = await clinicalAgent({
     patientId: state.patientId,
     query: state.query,
-    chat_history: state.chat_history,
+    chat_history: state.chat_history || [],
+    email: state.email,
+    sessionId: state.sessionId,
+    qaPairCount: state.qaPairCount,
   });
 
   return {
     answer: clinical.answer,
     followUpQuestions: clinical.followUpQuestions,
     severity: clinical.severity,
+    summary: clinical.summary,
+    isSummaryResponse: clinical.isSummaryResponse,
   };
 }
 
@@ -184,13 +189,14 @@ export async function saveToDatabaseNode(
       type: communicationType,
       question: state.query,
       answer: state.answer || "",
+      summary: state.summary,
       severity: state.severity,
       status: "completed",
       createdAt: new Date(),
       updatedAt: new Date(),
       emailSent: false,
-      sentToPatient: communicationType !== "emergency", // Emergency only to doctor
-      sentToDoctor: true, // Always sent to doctor
+      sentToPatient: communicationType !== "emergency",
+      sentToDoctor: true,
     };
 
     // Insert into database
@@ -208,7 +214,7 @@ export async function saveToDatabaseNode(
       await clinicalCollection.insertOne({
         patientId: state.patientId,
         questionnaireResponses: { query: state.query },
-        summary: state.answer || "",
+        summary: state.summary || state.answer || "",
         severity: state.severity || "medium",
         recommendedAction: "Follow up with doctor if symptoms persist",
         createdAt: new Date(),
@@ -307,21 +313,40 @@ export async function updateHistoryNode(
 ): Promise<Partial<HealthcareGraphStateType>> {
   console.log("[Graph] Executing update history node");
 
-  const updatedHistory = [
-    ...state.chat_history,
-    {
-      role: "user" as const,
-      content: state.query,
-      timestamp: new Date(),
-    },
-    {
-      role: "assistant" as const,
-      content: state.answer || "",
-      timestamp: new Date(),
-    },
-  ];
+  try {
+    const chatHistoryCollection = await getCollection("chat_history");
 
-  return {
-    chat_history: updatedHistory,
-  };
+    await chatHistoryCollection.insertOne({
+      sessionId: state.sessionId,
+      patientId: state.patientId,
+      question: state.query,
+      answer: state.answer || "",
+      severity: state.severity,
+      agentType: state.agent_type,
+      createdAt: new Date(),
+    } as any);
+
+    const updatedHistory = [
+      ...state.chat_history,
+      {
+        role: "user" as const,
+        content: state.query,
+        timestamp: new Date(),
+      },
+      {
+        role: "assistant" as const,
+        content: state.answer || "",
+        timestamp: new Date(),
+      },
+    ];
+
+    return {
+      chat_history: updatedHistory,
+    };
+  } catch (error) {
+    console.error("[Graph] Update history error:", error);
+    return {
+      chat_history: state.chat_history,
+    };
+  }
 }

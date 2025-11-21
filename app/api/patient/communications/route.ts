@@ -7,13 +7,17 @@ export async function GET(request: NextRequest) {
     const patientEmail = searchParams.get("patientEmail");
     const communicationType = searchParams.get("type");
 
+    if (!patientEmail) {
+      return NextResponse.json(
+        { error: "patientEmail is required" },
+        { status: 400 }
+      );
+    }
+
+    // Get from communications collection (where summaries are stored)
     const commsCollection = await getCollection("communications");
 
-    const query: any = {};
-
-    if (patientEmail) {
-      query.patientEmail = patientEmail;
-    }
+    const query: any = { patientEmail };
 
     if (communicationType && communicationType !== "all") {
       query.type = communicationType;
@@ -25,8 +29,7 @@ export async function GET(request: NextRequest) {
       .toArray();
 
     console.log(
-      `[v0] Doctor retrieved ${communications.length} communications`,
-      { patientEmail, communicationType }
+      `[v0] Retrieved ${communications.length} communications for patient ${patientEmail}`
     );
 
     return NextResponse.json({
@@ -35,8 +38,6 @@ export async function GET(request: NextRequest) {
         _id: comm._id?.toString() || "",
         patientEmail: comm.patientEmail,
         type: comm.type || "clinical",
-        question: comm.question || "Conversation Summary",
-        answer: comm.answer || "",
         summary: comm.summary || comm.answer || "",
         severity: comm.severity || "medium",
         status: comm.status || "completed",
@@ -49,7 +50,7 @@ export async function GET(request: NextRequest) {
       totalRecords: communications.length,
     });
   } catch (error) {
-    console.error("[v0] Doctor communications API error:", error);
+    console.error("[v0] Patient communications API error:", error);
     return NextResponse.json(
       { error: "Failed to fetch communications" },
       { status: 500 }

@@ -101,6 +101,20 @@ export const HealthcareGraphState = Annotation.Root({
   >({
     reducer: (current, update) => update ?? current,
   }),
+
+  // Session-specific fields
+  sessionId: Annotation<string | undefined>({
+    reducer: (current, update) => update ?? current,
+  }),
+  qaPairCount: Annotation<number | undefined>({
+    reducer: (current, update) => update ?? current,
+  }),
+  summary: Annotation<string | undefined>({
+    reducer: (current, update) => update ?? current,
+  }),
+  isSummaryResponse: Annotation<boolean | undefined>({
+    reducer: (current, update) => update ?? current,
+  }),
 });
 
 export type HealthcareGraphStateType = typeof HealthcareGraphState.State;

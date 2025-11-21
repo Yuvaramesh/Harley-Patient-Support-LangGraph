@@ -18,7 +18,9 @@ export interface ChatState {
   }>;
   patientId?: string;
   email?: string;
-  answer?: string; // Change from 'answer: string;' to 'answer?: string;'
+  answer?: string;
+  sessionId?: string;
+  qaPairCount?: number;
 }
 
 export interface Patient {
@@ -36,7 +38,7 @@ export interface Patient {
   updatedAt: Date;
 }
 export interface Communication {
-  _id?: ObjectId; // Change from string to ObjectId
+  _id?: ObjectId;
   patientId: string;
   patientEmail?: string;
   type: "clinical" | "faq" | "personal" | "emergency";
@@ -65,9 +67,9 @@ export interface ChatHistory {
   messages: ChatMessage[];
   summary?: string;
   summaryId?: ObjectId;
-  communicationType?: "clinical" | "faq" | "personal" | "emergency"; // Add this line
-  severity?: "low" | "medium" | "high" | "critical"; // Add this if not present
-  initialMessage?: string; // Add this if not present
+  communicationType?: "clinical" | "faq" | "personal" | "emergency";
+  severity?: "low" | "medium" | "high" | "critical";
+  initialMessage?: string;
   createdAt: Date;
   status: "active" | "completed" | "archived";
 }

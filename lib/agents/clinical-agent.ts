@@ -21,22 +21,53 @@ function cleanMarkdown(text: string): string {
     .replace(/^>\s+/gm, "")
     .replace(/^[\s]*[-*+]\s+/gm, "  ")
     .replace(/^[\s]*\d+\.\s+/gm, "  ")
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
-    .replace(/!\[([^\]]*)\]\([^)]+\)/g, "$1")
+    .replace(/\[([^\]]+)\]$$[^)]+$$/g, "$1")
+    .replace(/!\[([^\]]*)\]$$[^)]+$$/g, "$1")
     .replace(/ {2,}/g, " ")
     .trim();
 }
 
 /**
  * Check if enough information has been gathered
+ * Fixed to count Q/A pairs correctly (user + assistant = 1 pair)
+ * Should trigger after 5 pairs = 10 total messages (5 user + 5 assistant)
  */
 function hasEnoughInformation(chatHistory: any[]): boolean {
-  const assistantQuestions = chatHistory.filter(
-    (m) => m.role === "assistant"
-  ).length;
+  if (!Array.isArray(chatHistory)) {
+    console.warn(
+      "[v0] chatHistory is not an array, returning false",
+      typeof chatHistory
+    );
+    return false;
+  }
 
-  // Need at least 4-5 back-and-forth exchanges
-  return assistantQuestions >= 4;
+  // Count Q/A pairs: each pair = 1 user message + 1 assistant message
+  const qaPairCount = Math.floor(chatHistory.length / 2);
+
+  // Need exactly 5 Q/A exchanges to trigger summary
+  console.log("[Clinical Agent] Q/A pair check:", {
+    totalMessages: chatHistory.length,
+    qaPairCount,
+    readyForSummary: qaPairCount >= 5,
+  });
+
+  return qaPairCount >= 5;
+}
+
+function formatBufferMemory(chatHistory: any[], sessionId?: string): string {
+  if (chatHistory.length === 0) return "No previous conversation history.";
+
+  const recentExchanges = chatHistory.slice(-10); // Keep last 5 exchanges
+  const memoryText = recentExchanges
+    .map((msg, idx) => {
+      const role = msg.role === "user" ? "Patient" : "Assistant";
+      return `${role}: ${msg.content}`;
+    })
+    .join("\n\n");
+
+  return `Session ID: ${
+    sessionId || "unknown"
+  }\n\nConversation Buffer:\n${memoryText}`;
 }
 
 export async function clinicalAgent(state: ChatState): Promise<{
@@ -44,14 +75,16 @@ export async function clinicalAgent(state: ChatState): Promise<{
   followUpQuestions?: string[];
   severity: "low" | "medium" | "high" | "critical";
   needsSummary?: boolean;
-  summary?: string; // Summary to send to dashboard
-  isSummaryResponse?: boolean; // Flag to indicate this is the final summary
+  summary?: string;
+  isSummaryResponse?: boolean;
 }> {
-  const hasEnoughInfo = hasEnoughInformation(state.chat_history);
+  const hasEnoughInfo = hasEnoughInformation(state.chat_history || []);
 
-  // If ready for summary
+  // If ready for summary (5 Q/A exchanges reached)
   if (hasEnoughInfo) {
     const summaryPrompt = `You are a clinical healthcare assistant. Create a concise medical summary.
+
+${formatBufferMemory(state.chat_history, state.sessionId)}
 
 Patient's Initial Query: "${state.query}"
 Complete Conversation History: ${JSON.stringify(state.chat_history)}
@@ -105,14 +138,13 @@ SEVERITY: [low/medium/high/critical]`;
           ? (severityText as "low" | "medium" | "high" | "critical")
           : "medium";
 
-      // Return different message for chat UI
       return {
         answer:
-          "Thank you for providing all the information. I've created a summary of our conversation and sent it to your doctor. They will review it and contact you shortly if needed. Is there anything else I can help you with?",
+          "Thanks for providing all the information. I've created a summary and will send it to your doctor. They will review it and contact you if needed.",
         severity,
         needsSummary: false,
-        summary: summaryText, // This summary will be sent to dashboards
-        isSummaryResponse: true, // Flag to indicate this is the final summary
+        summary: summaryText,
+        isSummaryResponse: true,
       };
     } catch (error) {
       console.error("Clinical agent error:", error);
@@ -126,6 +158,8 @@ SEVERITY: [low/medium/high/critical]`;
 
   // Ask next dynamic question based on conversation context
   const questionPrompt = `You are a clinical healthcare assistant gathering information from a patient.
+
+${formatBufferMemory(state.chat_history, state.sessionId)}
 
 Patient's Initial Query: "${state.query}"
 Full Conversation History: ${JSON.stringify(state.chat_history)}
@@ -183,7 +217,7 @@ SEVERITY: [low/medium/high/critical based on description so far]`;
       answer,
       severity,
       needsSummary: false,
-      isSummaryResponse: false, // This is just a question, not the final summary
+      isSummaryResponse: false,
     };
   } catch (error) {
     console.error("Clinical agent error:", error);

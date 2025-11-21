@@ -100,12 +100,27 @@ async function shouldSendToPatient(
 
 export async function POST(request: NextRequest) {
   try {
-    const { patientId, email, messages, severity, communicationType } =
-      await request.json();
+    const {
+      patientId,
+      email,
+      messages,
+      severity,
+      communicationType,
+      sessionId,
+      qaPairCount,
+      isConversationComplete,
+    } = await request.json();
 
-    if (!patientId || !email || !messages || !Array.isArray(messages)) {
+    if (!patientId || !email) {
       return NextResponse.json(
-        { error: "Missing required fields" },
+        { error: "Missing required fields: patientId and email are required" },
+        { status: 400 }
+      );
+    }
+
+    if (!messages || !Array.isArray(messages)) {
+      return NextResponse.json(
+        { error: "Missing required field: messages array is required" },
         { status: 400 }
       );
     }
@@ -141,11 +156,10 @@ export async function POST(request: NextRequest) {
     const commType = communicationType || "clinical";
     const sentToPatient = await shouldSendToPatient(messages, commType);
 
-    // Store summary with timestamp in communications collection
     const communicationRecord = {
       patientId,
       patientEmail: email,
-      type: commType, // Store communication type (clinical, faq, personal, emergency)
+      type: commType,
       question: "Conversation Summary",
       answer: summary,
       summary,
@@ -155,29 +169,24 @@ export async function POST(request: NextRequest) {
       status: "completed",
       emailSent: false,
       messageCount: messages.length,
-      summarySource, // Track whether summary was AI-generated or fallback
-      sentToPatient, // Track if sent to patient (false for emergency)
-      sentToDoctor: true, // Always sent to doctor
+      summarySource,
+      sentToPatient,
+      sentToDoctor: true,
+      sessionId, // Store sessionId for traceability
+      qaPairCount, // Store number of Q/A pairs
+      isConversationComplete: isConversationComplete || false,
     };
 
     const result = await commsCollection.insertOne(communicationRecord as any);
 
-    // Store full conversation history for reference
-    const chatHistoryCollection = await getCollection("chat_history");
-    await chatHistoryCollection.insertOne({
-      patientId,
-      patientEmail: email,
-      conversationId: `conv_${patientId}_${timestamp.getTime()}`,
-      messages,
-      summary,
-      summaryId: result.insertedId,
-      communicationType: commType, // Store type in history too
-      createdAt: timestamp,
-      status: "completed",
-    });
-
     console.log(
-      `[v0] ${commType} summary stored successfully (sent to patient: ${sentToPatient}, sent to doctor: true)`
+      `[v0] Summary stored successfully with ID: ${result.insertedId}`,
+      {
+        sessionId,
+        qaPairCount,
+        communicationType: commType,
+        sentToPatient,
+      }
     );
 
     return NextResponse.json({
