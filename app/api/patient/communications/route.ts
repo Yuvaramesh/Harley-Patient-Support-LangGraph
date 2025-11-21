@@ -14,40 +14,42 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Get from communications collection (where summaries are stored)
-    const commsCollection = await getCollection("communications");
+    const chatHistoryCollection = await getCollection("chat_history");
 
-    const query: any = { patientEmail };
+    const query: any = {
+      patientEmail,
+      isConversationSummary: true, // Only get summary records
+    };
 
     if (communicationType && communicationType !== "all") {
-      query.type = communicationType;
+      query.communicationType = communicationType;
     }
 
-    const communications = await commsCollection
+    const summaries = await chatHistoryCollection
       .find(query)
       .sort({ createdAt: -1 })
       .toArray();
 
     console.log(
-      `[v0] Retrieved ${communications.length} communications for patient ${patientEmail}`
+      `[v0] Retrieved ${summaries.length} conversation summaries for patient ${patientEmail}`
     );
 
     return NextResponse.json({
       success: true,
-      communications: communications.map((comm: any) => ({
-        _id: comm._id?.toString() || "",
-        patientEmail: comm.patientEmail,
-        type: comm.type || "clinical",
-        summary: comm.summary || comm.answer || "",
-        severity: comm.severity || "medium",
-        status: comm.status || "completed",
-        createdAt: comm.createdAt,
-        timestamp: comm.createdAt,
-        messageCount: comm.messageCount || 0,
-        sessionId: comm.sessionId,
-        qaPairCount: comm.qaPairCount,
+      communications: summaries.map((record: any) => ({
+        _id: record._id?.toString() || "",
+        patientEmail: record.patientEmail,
+        type: record.communicationType || "clinical",
+        summary: record.summary || "",
+        severity: record.severity || "medium",
+        status: record.status || "completed",
+        createdAt: record.createdAt,
+        timestamp: record.createdAt,
+        messageCount: record.messageCount || 0,
+        sessionId: record.sessionId,
+        qaPairCount: record.qaPairCount,
       })),
-      totalRecords: communications.length,
+      totalRecords: summaries.length,
     });
   } catch (error) {
     console.error("[v0] Patient communications API error:", error);

@@ -51,23 +51,25 @@ export async function POST(request: NextRequest) {
       })
     );
 
+    let qaPairCount = Math.floor(fullChatHistory.length / 2);
+
     // If sessionId is provided and chatHistory is empty, fetch from database
     if (providedSessionId && (!chatHistory || chatHistory.length === 0)) {
       try {
-        const chatHistoryCollection = await getCollection("chat_history");
-        const sessionHistory = await chatHistoryCollection
+        const commsCollection = await getCollection("communications");
+        const sessionMessages = await commsCollection
           .find({ sessionId: providedSessionId })
           .sort({ createdAt: 1 })
           .toArray();
 
-        if (sessionHistory && sessionHistory.length > 0) {
-          console.log("[API] Retrieved session history from database:", {
+        if (sessionMessages && sessionMessages.length > 0) {
+          console.log("[API] Retrieved session messages from database:", {
             sessionId: providedSessionId,
-            messageCount: sessionHistory.length,
+            messageCount: sessionMessages.length,
           });
 
-          // Extract chat messages from stored history
-          fullChatHistory = sessionHistory.flatMap((record: any) => {
+          // Extract chat messages from stored communications
+          fullChatHistory = sessionMessages.flatMap((record: any) => {
             const messages: ChatMessage[] = [];
             if (record.question) {
               messages.push({
@@ -85,6 +87,8 @@ export async function POST(request: NextRequest) {
             }
             return messages;
           });
+
+          qaPairCount = sessionMessages.length;
         }
       } catch (dbError) {
         console.warn(
@@ -102,7 +106,7 @@ export async function POST(request: NextRequest) {
       user_email: email,
       email: email,
       sessionId,
-      qaPairCount: Math.floor(fullChatHistory.length / 2),
+      qaPairCount,
     };
 
     console.log(
@@ -142,7 +146,7 @@ export async function POST(request: NextRequest) {
       };
     }
 
-    const finalQaPairCount = Math.floor((fullChatHistory.length + 2) / 2);
+    const finalQaPairCount = qaPairCount + 1;
 
     return NextResponse.json({
       success: true,

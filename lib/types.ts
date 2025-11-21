@@ -57,6 +57,8 @@ export interface Communication {
   followUpRequired?: boolean;
   sentToPatient?: boolean;
   sentToDoctor?: boolean;
+  sessionId?: string;
+  qaPairCount?: number;
 }
 
 export interface ChatHistory {

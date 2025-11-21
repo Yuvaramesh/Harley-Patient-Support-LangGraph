@@ -152,16 +152,15 @@ export async function POST(request: NextRequest) {
     }
 
     const timestamp = new Date();
-    const commsCollection = await getCollection("communications");
+    const chatHistoryCollection = await getCollection("chat_history");
     const commType = communicationType || "clinical";
     const sentToPatient = await shouldSendToPatient(messages, commType);
 
-    const communicationRecord = {
+    const summaryRecord = {
+      sessionId,
       patientId,
       patientEmail: email,
-      type: commType,
-      question: "Conversation Summary",
-      answer: summary,
+      type: "summary",
       summary,
       severity: severity || "medium",
       timestamp,
@@ -172,15 +171,16 @@ export async function POST(request: NextRequest) {
       summarySource,
       sentToPatient,
       sentToDoctor: true,
-      sessionId, // Store sessionId for traceability
-      qaPairCount, // Store number of Q/A pairs
+      communicationType: commType,
+      qaPairCount,
       isConversationComplete: isConversationComplete || false,
+      isConversationSummary: true,
     };
 
-    const result = await commsCollection.insertOne(communicationRecord as any);
+    const result = await chatHistoryCollection.insertOne(summaryRecord as any);
 
     console.log(
-      `[v0] Summary stored successfully with ID: ${result.insertedId}`,
+      `[v0] Summary stored in chat_history with ID: ${result.insertedId}`,
       {
         sessionId,
         qaPairCount,
@@ -191,13 +191,13 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: "Summary created and sent to communications",
+      message: "Summary created and stored in chat history",
       summarySource,
       sentToPatient,
       communicationType: commType,
       data: {
         id: result.insertedId,
-        ...communicationRecord,
+        ...summaryRecord,
       },
     });
   } catch (error) {

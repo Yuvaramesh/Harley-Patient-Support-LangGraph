@@ -17,31 +17,40 @@ export async function GET(request: NextRequest) {
 
     const chatHistoryCollection = await getCollection("chat_history");
 
-    const query: any = { patientId };
+    const query: any = {
+      patientId,
+      isConversationSummary: true, // Only get summary records
+    };
 
     if (communicationType && communicationType !== "all") {
       query.communicationType = communicationType;
     }
 
-    const chatHistories = await chatHistoryCollection
+    const summaries = await chatHistoryCollection
       .find(query)
       .sort({ createdAt: -1 })
       .toArray();
 
-    const communications = chatHistories.map((history: any) => ({
-      _id: history._id?.toString() || "",
-      patientId: history.patientId,
-      patientEmail: history.patientEmail,
-      type: history.communicationType || "clinical",
-      summary: history.summary || "",
-      status: history.status || "completed",
-      createdAt: history.createdAt,
-      timestamp: history.createdAt,
-      messageCount: history.messages?.length || 0,
-      severity: determineSeverity(history.summary),
-      sentToDoctor: true,
-      sentToPatient: history.communicationType !== "emergency",
+    const communications = summaries.map((record: any) => ({
+      _id: record._id?.toString() || "",
+      patientId: record.patientId,
+      patientEmail: record.patientEmail,
+      type: record.communicationType || "clinical",
+      summary: record.summary || "",
+      status: record.status || "completed",
+      createdAt: record.createdAt,
+      timestamp: record.createdAt,
+      messageCount: record.messageCount || 0,
+      severity: record.severity || "medium",
+      sentToDoctor: record.sentToDoctor !== false,
+      sentToPatient: record.sentToPatient !== false,
+      sessionId: record.sessionId,
+      qaPairCount: record.qaPairCount,
     }));
+
+    console.log(
+      `[v0] Retrieved ${communications.length} conversation summaries for patient ${patientId}`
+    );
 
     return NextResponse.json({ communications });
   } catch (error) {
@@ -51,30 +60,4 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
   }
-}
-
-// Helper function to determine severity based on summary content
-function determineSeverity(
-  summary: string
-): "low" | "medium" | "high" | "critical" {
-  const text = (summary || "").toLowerCase();
-
-  if (
-    text.includes("critical") ||
-    text.includes("emergency") ||
-    text.includes("severe")
-  ) {
-    return "critical";
-  }
-  if (
-    text.includes("high") ||
-    text.includes("urgent") ||
-    text.includes("serious")
-  ) {
-    return "high";
-  }
-  if (text.includes("medium") || text.includes("moderate")) {
-    return "medium";
-  }
-  return "low";
 }

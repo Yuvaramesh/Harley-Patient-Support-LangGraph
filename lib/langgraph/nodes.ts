@@ -183,13 +183,13 @@ export async function saveToDatabaseNode(
       communicationType = "faq";
     }
 
-    // Prepare communication record
+    // Prepare communication record for individual Q&A storage
     const communicationRecord: Partial<Communication> = {
       patientId: state.patientId,
+      patientEmail: state.email,
       type: communicationType,
       question: state.query,
       answer: state.answer || "",
-      summary: state.summary,
       severity: state.severity,
       status: "completed",
       createdAt: new Date(),
@@ -197,13 +197,18 @@ export async function saveToDatabaseNode(
       emailSent: false,
       sentToPatient: communicationType !== "emergency",
       sentToDoctor: true,
+      sessionId: state.sessionId,
+      qaPairCount: state.qaPairCount,
     };
 
-    // Insert into database
+    // Insert into communications collection
     const result = await commsCollection.insertOne(communicationRecord as any);
     const commId = result.insertedId.toString();
 
-    console.log(`[Graph] Saved communication with ID: ${commId}`);
+    console.log(`[Graph] Saved Q&A to communications with ID: ${commId}`, {
+      sessionId: state.sessionId,
+      type: communicationType,
+    });
 
     // Save clinical note if clinical agent
     if (state.agent_type === "clinical") {
@@ -316,15 +321,26 @@ export async function updateHistoryNode(
   try {
     const chatHistoryCollection = await getCollection("chat_history");
 
-    await chatHistoryCollection.insertOne({
-      sessionId: state.sessionId,
-      patientId: state.patientId,
-      question: state.query,
-      answer: state.answer || "",
-      severity: state.severity,
-      agentType: state.agent_type,
-      createdAt: new Date(),
-    } as any);
+    if (state.isSummaryResponse && state.summary) {
+      await chatHistoryCollection.insertOne({
+        sessionId: state.sessionId,
+        patientId: state.patientId,
+        patientEmail: state.email,
+        type: "summary", // Mark as summary record
+        summary: state.summary,
+        severity: state.severity,
+        agentType: state.agent_type,
+        communicationType: state.agent_type,
+        qaPairCount: state.qaPairCount,
+        createdAt: new Date(),
+        isConversationSummary: true,
+      } as any);
+
+      console.log("[Graph] Saved summary to chat_history", {
+        sessionId: state.sessionId,
+        qaPairCount: state.qaPairCount,
+      });
+    }
 
     const updatedHistory = [
       ...state.chat_history,
