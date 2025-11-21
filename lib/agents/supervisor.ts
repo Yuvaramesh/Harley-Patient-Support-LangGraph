@@ -4,7 +4,7 @@ import type { ChatState } from "../types";
 import { retryWithBackoff } from "../retry-utility";
 
 const genai = new GoogleGenerativeAI(process.env.NEXT_PUBLIC_GEMINI_API_KEY!);
-const model = genai.getGenerativeModel({ model: "gemini-2.5-flash" });
+const model = genai.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
 
 export async function supervisorAgent(state: ChatState): Promise<string> {
   const prompt = `You are a medical triage supervisor agent. Analyze the patient's query and determine which agent should handle it.
