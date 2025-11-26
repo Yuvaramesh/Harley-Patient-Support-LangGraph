@@ -29,11 +29,11 @@ export async function supervisorNode(
     chat_history: state.chat_history,
     email: state.email,
   });
-
+  // current state patientId, query, chat_history, email, agent_type, severity(will be set next)
   console.log(`[Graph] Supervisor routed to: ${agentType}`);
 
   return {
-    agent_type: agentType,
+    agent_type: agentType, // store in state -- "clinical" | "personal" | "generic_faq" | "emergency"
   };
 }
 

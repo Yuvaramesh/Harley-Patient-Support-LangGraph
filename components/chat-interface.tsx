@@ -411,7 +411,6 @@ export function ChatInterface({
               </p>
               <ul className="text-sm text-gray-700 space-y-1">
                 <li>• Clinical health questions</li>
-                <li>• Genetic and hereditary health information</li>
                 <li>• General health FAQs</li>
                 <li>• Emergency situation assessment</li>
                 <li>• Personal account information</li>
