@@ -62,6 +62,14 @@ export function DoctorDashboard({ doctorEmail }: DoctorDashboardProps) {
       const response = await fetch("/api/doctor/communications");
       const data = await response.json();
 
+      console.log(
+        "[v0 Doctor Dashboard] Fetched summaries from chat_history collection:",
+        {
+          count: data.communications?.length || 0,
+          source: "chat_history collection only",
+        }
+      );
+
       if (data.success) {
         setCommunications(data.communications);
 
@@ -120,7 +128,7 @@ export function DoctorDashboard({ doctorEmail }: DoctorDashboardProps) {
     if (!text) return null;
 
     // Remove all asterisks for bold markers
-    let formatted = text.replace(/\*\*/g, "");
+    const formatted = text.replace(/\*\*/g, "");
 
     // Split by double newlines to get sections
     const sections = formatted.split("\n\n");
@@ -143,8 +151,8 @@ export function DoctorDashboard({ doctorEmail }: DoctorDashboardProps) {
                 if (!line.trim()) return null;
 
                 // Detect bullet points
-                const isBullet = line.trim().match(/^(\d+\.|\•|-|\*)/);
-                const cleanLine = line.replace(/^(\s*(\d+\.|\•|-|\*)\s*)/, "");
+                const isBullet = line.trim().match(/^(\d+\.|•|-|\*)/);
+                const cleanLine = line.replace(/^(\s*(\d+\.|•|-|\*)\s*)/, "");
 
                 return (
                   <div key={lineIdx} className={isBullet ? "flex gap-2" : ""}>
@@ -163,8 +171,8 @@ export function DoctorDashboard({ doctorEmail }: DoctorDashboardProps) {
             {lines.map((line, lineIdx) => {
               if (!line.trim()) return null;
 
-              const isBullet = line.trim().match(/^(\d+\.|\•|-|\*)/);
-              const cleanLine = line.replace(/^(\s*(\d+\.|\•|-|\*)\s*)/, "");
+              const isBullet = line.trim().match(/^(\d+\.|•|-|\*)/);
+              const cleanLine = line.replace(/^(\s*(\d+\.|•|-|\*)\s*)/, "");
 
               if (isBullet) {
                 return (

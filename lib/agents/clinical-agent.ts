@@ -29,16 +29,33 @@ function cleanMarkdown(text: string): string {
 
 /**
  * Check if enough information has been gathered
- * Trigger summary when 5th user question is being asked (qaPairCount = 4, which means 4 previous exchanges)
- * This means: Q1-Q4 get AI questions, Q5 gets the summary message
+ * Removed auto-summary trigger - frontend handles checkpoint at 7 Q/A pairs
+ * Backend should only create summary when explicitly requested via createAutoSummary
  */
 function hasEnoughInformation(qaPairCount: number): boolean {
   console.log("[Clinical Agent] Q/A pair check:", {
     qaPairCount,
-    readyForSummary: qaPairCount >= 4,
+    readyForSummary: false, // Never auto-trigger, let frontend handle checkpoint
   });
 
-  return qaPairCount >= 4;
+  return false;
+}
+
+/**
+ * Check if we've reached 7 Q/A pairs and should ask user to continue or end
+ */
+function shouldShowCheckpoint(qaPairCount: number): boolean {
+  // Check if qaPairCount is exactly at a multiple of 7
+  const pairsInCurrentLoop = qaPairCount % 7;
+  const shouldShow = qaPairCount > 0 && pairsInCurrentLoop === 0;
+
+  console.log("[Clinical Agent] Checkpoint check:", {
+    qaPairCount,
+    pairsInCurrentLoop,
+    shouldShow,
+  });
+
+  return shouldShow;
 }
 
 function formatBufferMemory(chatHistory: any[], sessionId?: string): string {
@@ -64,83 +81,20 @@ export async function clinicalAgent(state: ChatState): Promise<{
   needsSummary?: boolean;
   summary?: string;
   isSummaryResponse?: boolean;
+  isCheckpoint?: boolean;
 }> {
-  const hasEnoughInfo = hasEnoughInformation(state.qaPairCount || 0);
+  const isCheckpointMoment = shouldShowCheckpoint(state.qaPairCount || 0);
 
-  // If ready for summary (5 Q/A exchanges reached)
-  if (hasEnoughInfo) {
-    const summaryPrompt = `You are a clinical healthcare assistant. Create a concise medical summary.
-
-${formatBufferMemory(state.chat_history, state.sessionId)}
-
-Patient's Initial Query: "${state.query}"
-Complete Conversation History: ${JSON.stringify(state.chat_history)}
-
-Analyze the entire conversation and create a brief, structured summary that includes:
-1. Chief complaint
-2. Key symptoms and characteristics gathered
-3. Duration and frequency
-4. Severity assessment
-5. Other relevant details mentioned
-6. Simple statement about what this might indicate (NO recommendations or treatment advice)
-7. When to seek medical care if applicable
-
-Keep the summary concise and factual. NO markdown formatting.
-DO NOT provide treatment recommendations, suggestions, or advice.
-
-Format your response as:
-RESPONSE: [Medical Summary in plain text]
-FOLLOW_UP: NONE
-SEVERITY: [low/medium/high/critical]`;
-
-    try {
-      const response = await retryWithBackoff(
-        async () => {
-          return await model.generateContent(summaryPrompt);
-        },
-        3,
-        1000
-      );
-
-      const text = response.response.text();
-      const responseMatch = text.match(
-        /RESPONSE:\s*([\s\S]*?)(?=FOLLOW_UP:|$)/
-      );
-      const severityMatch = text.match(/SEVERITY:\s*(\w+)/);
-
-      const rawAnswer = responseMatch ? responseMatch[1].trim() : text;
-      const summaryText = cleanMarkdown(rawAnswer);
-
-      const severityText = severityMatch
-        ? severityMatch[1].toLowerCase()
-        : "medium";
-      const validSeverities: Array<"low" | "medium" | "high" | "critical"> = [
-        "low",
-        "medium",
-        "high",
-        "critical",
-      ];
-      const severity: "low" | "medium" | "high" | "critical" =
-        validSeverities.includes(severityText as any)
-          ? (severityText as "low" | "medium" | "high" | "critical")
-          : "medium";
-
-      return {
-        answer:
-          "Thanks for providing all the information. I will create a summary and give it to your doctor.",
-        severity,
-        needsSummary: false,
-        summary: summaryText,
-        isSummaryResponse: true,
-      };
-    } catch (error) {
-      console.error("Clinical agent error:", error);
-      return {
-        answer:
-          "I'm experiencing technical difficulties. Please contact your healthcare provider for immediate concerns.",
-        severity: "medium",
-      };
-    }
+  if (isCheckpointMoment) {
+    console.log("[Clinical Agent] Reached 7 Q/A pairs - triggering checkpoint");
+    return {
+      answer:
+        "I have enough information from our conversation so far. Would you like to continue providing additional information, or would you like me to create a summary and send it to your doctor?",
+      severity: "medium",
+      needsSummary: false,
+      isSummaryResponse: false,
+      isCheckpoint: true,
+    };
   }
 
   // Ask next dynamic question based on conversation context
@@ -205,6 +159,7 @@ SEVERITY: [low/medium/high/critical based on description so far]`;
       severity,
       needsSummary: false,
       isSummaryResponse: false,
+      isCheckpoint: false,
     };
   } catch (error) {
     console.error("Clinical agent error:", error);
@@ -212,6 +167,9 @@ SEVERITY: [low/medium/high/critical based on description so far]`;
       answer:
         "I'm experiencing technical difficulties. Please contact your healthcare provider for immediate concerns.",
       severity: "medium",
+      needsSummary: false,
+      isSummaryResponse: false,
+      isCheckpoint: false,
     };
   }
 }

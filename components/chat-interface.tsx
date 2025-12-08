@@ -4,12 +4,24 @@ import { useState, useRef, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Send, Loader2, RefreshCw, CheckCircle } from "lucide-react";
+import {
+  Send,
+  Loader2,
+  RefreshCw,
+  CheckCircle,
+  AlertCircle,
+  LogOut,
+} from "lucide-react";
 
 interface Message {
   role: "user" | "assistant";
   content: string;
   timestamp: Date;
+  agentType?: string;
+  emergencyNumber?: string;
+  nearbyClinicLocations?: string[];
+  needsLocation?: boolean;
+  severity?: string;
 }
 
 interface ChatInterfaceProps {
@@ -19,12 +31,7 @@ interface ChatInterfaceProps {
   contact?: string;
 }
 
-export function ChatInterface({
-  patientId,
-  email,
-  name,
-  contact,
-}: ChatInterfaceProps) {
+export function ChatInterface({ patientId, email }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -34,7 +41,12 @@ export function ChatInterface({
   const [sessionId, setSessionId] = useState<string>("");
   const [qaPairCount, setQaPairCount] = useState(0);
   const [displayedSummary, setDisplayedSummary] = useState<string>("");
+  const [showCheckpoint, setShowCheckpoint] = useState(false);
+  const [conversationLoop, setConversationLoop] = useState(1);
+  const [showEndMessage, setShowEndMessage] = useState(false);
+  const [currentLoopStartIndex, setCurrentLoopStartIndex] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const storageKey = `chat_messages_${patientId}`;
   const sessionStorageKey = `session_id_${patientId}`;
@@ -98,6 +110,9 @@ export function ChatInterface({
       setSummaryCreated(false);
       setDisplayedSummary("");
       setQaPairCount(0);
+      setShowCheckpoint(false);
+      setConversationLoop(1);
+      setShowEndMessage(false);
       sessionStorage.removeItem(storageKey);
       sessionStorage.removeItem(sessionStorageKey);
       const newSessionId = `session_${Date.now()}_${Math.random()
@@ -109,37 +124,19 @@ export function ChatInterface({
   };
 
   const shouldAutoCreateSummary = (assistantMessage: string): boolean => {
-    const completionKeywords = [
-      "sent it to your doctor",
-      "sent to your doctor",
-      "i have sent",
-      "emergency alert sent",
-      "emergency services",
-      "is there anything else",
-      "anything else i can help",
-      "thank you for using",
-    ];
-
-    const lowerMessage = assistantMessage.toLowerCase();
-    const matchCount = completionKeywords.filter((keyword) =>
-      lowerMessage.includes(keyword)
-    ).length;
-
-    return matchCount >= 1;
+    // This function is now only used for explicit end keywords, not for triggering summaries during conversation
+    return false;
   };
 
   const createAutoSummary = async (
-    conversationMessages: Message[],
+    conversationMessages: Array<{
+      role: "user" | "assistant";
+      content: string;
+      timestamp: string;
+    }>,
     agentType?: string
   ) => {
     if (conversationMessages.length === 0) return;
-
-    if (summaryCreated) {
-      console.log(
-        "[v0] Summary already created for this conversation, skipping duplicate"
-      );
-      return;
-    }
 
     setCreatingAutoSummary(true);
     try {
@@ -152,6 +149,8 @@ export function ChatInterface({
           ? "faq"
           : "clinical";
 
+      const loopSessionId = `${sessionId}_loop${conversationLoop}`;
+
       const response = await fetch("/api/communications/summary", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -161,9 +160,10 @@ export function ChatInterface({
           messages: conversationMessages,
           severity: "medium",
           communicationType,
-          sessionId,
+          sessionId: loopSessionId, // Use loop-specific sessionId
           qaPairCount,
           isConversationComplete: true,
+          conversationLoop, // Include loop number
         }),
       });
 
@@ -173,29 +173,23 @@ export function ChatInterface({
         console.error("[v0] Summary API error:", data);
         if (data.data?.summary) {
           console.log("[v0] Summary created with fallback method");
-          setSummaryCreated(true);
-          if (communicationType === "emergency") {
-            alert(
-              "Emergency summary has been sent to your doctor. Emergency services have been notified."
-            );
-          } else {
-            alert("Your conversation summary has been saved successfully.");
-          }
+          setDisplayedSummary(data.data.summary);
+          alert(
+            "Your conversation summary has been saved and sent to your doctor successfully."
+          );
         } else {
           throw new Error(data.error || "Failed to create summary");
         }
       } else {
-        setSummaryCreated(true);
         console.log(
-          `[v0] Summary created successfully (${data.summarySource})`
+          `[v0] Summary created successfully for loop ${conversationLoop} (${data.summarySource})`
         );
-        if (communicationType === "emergency") {
-          alert(
-            "Emergency summary has been sent to your doctor. Emergency services have been notified."
-          );
-        } else {
-          alert("Your conversation summary has been saved successfully.");
+        if (data.data?.summary) {
+          setDisplayedSummary(data.data.summary);
         }
+        alert(
+          "Your conversation summary has been saved and sent to your doctor successfully."
+        );
       }
     } catch (error) {
       console.error("[v0] Error creating auto-summary:", error);
@@ -207,159 +201,173 @@ export function ChatInterface({
     }
   };
 
+  const handleEndConversation = async () => {
+    if (messages.length === 0) {
+      alert("No conversation to end. Start chatting to create a summary.");
+      return;
+    }
+
+    setShowEndMessage(true);
+
+    const currentLoopMessages = messages.slice(currentLoopStartIndex);
+
+    console.log("[v0] Creating summary for current loop:", {
+      conversationLoop,
+      totalMessages: messages.length,
+      currentLoopStartIndex,
+      currentLoopMessagesCount: currentLoopMessages.length,
+    });
+
+    const messagesToSummarize: Array<{
+      role: "user" | "assistant";
+      content: string;
+      timestamp: string;
+    }> = currentLoopMessages.map((msg) => ({
+      role: msg.role,
+      content: msg.content,
+      timestamp:
+        msg.timestamp instanceof Date
+          ? msg.timestamp.toISOString()
+          : String(msg.timestamp),
+    }));
+
+    setTimeout(() => {
+      createAutoSummary(messagesToSummarize, "clinical");
+    }, 1000);
+  };
+
+  const handleCheckpointContinue = () => {
+    console.log("[v0] User chose to continue conversation");
+    setShowCheckpoint(false);
+    setConversationLoop(conversationLoop + 1);
+    setQaPairCount(0); // Reset Q/A pair count for the new loop
+    setCurrentLoopStartIndex(messages.length);
+    console.log("[v0] Starting new loop:", {
+      newLoop: conversationLoop + 1,
+      newStartIndex: messages.length,
+    });
+  };
+
+  const handleCheckpointEnd = async () => {
+    console.log("[v0] User chose to end conversation at checkpoint");
+    setShowCheckpoint(false);
+    await handleEndConversation();
+  };
+
   const handleSendMessage = async () => {
     if (!input.trim()) return;
 
+    if (showCheckpoint) return;
+
+    const currentInput = input;
+    setInput("");
+    setLoading(true);
+    setError(null);
+
     const userMessage: Message = {
       role: "user",
-      content: input,
+      content: currentInput,
       timestamp: new Date(),
     };
 
-    setMessages((prev) => [...prev, userMessage]);
-    setInput("");
-    setShowWelcome(false);
-    setLoading(true);
+    const newMessages = [...messages, userMessage];
+    setMessages(newMessages);
 
     try {
-      const messagesToSend = messages.map((msg) => ({
-        role: msg.role,
-        content: msg.content,
-        timestamp:
-          msg.timestamp instanceof Date
-            ? msg.timestamp.toISOString()
-            : msg.timestamp,
-      }));
-
-      console.log("[Chat] Sending message with history:", {
-        patientId,
-        email,
-        query: input,
-        sessionId,
-        chatHistoryLength: messagesToSend.length,
-      });
+      console.log("[v0] Sending message with sessionId:", sessionId);
+      console.log("[v0] Current Q/A pair count:", qaPairCount);
 
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           patientId,
-          email,
-          query: input,
-          chatHistory: messagesToSend,
-          sessionId,
+          email: email,
+          query: currentInput,
+          chatHistory: newMessages.map((msg) => ({
+            role: msg.role,
+            content: msg.content,
+            timestamp:
+              msg.timestamp instanceof Date
+                ? msg.timestamp.toISOString()
+                : msg.timestamp,
+          })),
+          sessionId: sessionId || undefined,
         }),
       });
 
-      const data = await response.json();
-
       if (!response.ok) {
-        console.error("[Chat] API returned error status:", response.status);
-        console.error("[Chat] Error response:", data);
-        throw new Error(data.error || "Failed to get response");
+        throw new Error(`HTTP error! status: ${response.status}`);
       }
 
-      if (data.success) {
-        let assistantContent = "";
+      const data = await response.json();
+      console.log("[v0] Received response:", data);
 
-        if (data.agentType === "emergency") {
-          assistantContent = `🚨 EMERGENCY DETECTED\n\n${data.response.message}\n\nEmergency Number: ${data.response.emergencyNumber}`;
+      if (!sessionId && data.sessionId) {
+        setSessionId(data.sessionId);
+        console.log("[v0] Session ID set:", data.sessionId);
+      }
 
-          if (
-            data.response.nearbyClinicLocations &&
-            data.response.nearbyClinicLocations.length > 0
-          ) {
-            assistantContent += "\n\nNearby Emergency Facilities:\n";
-            data.response.nearbyClinicLocations
-              .slice(0, 3)
-              .forEach((location: string) => {
-                assistantContent += `\n${location}`;
-              });
-          }
-        } else if (
-          data.agentType === "personal" &&
-          data.response.personalData
-        ) {
-          assistantContent = data.response.answer || "";
+      let assistantMessage: Message | null = null;
 
-          const pd = data.response.personalData;
-          if (pd) {
-            assistantContent = `Here is your personal information:\n\n`;
-            if (pd.email) assistantContent += `📧 Email: ${pd.email}\n`;
-            if (pd.name) assistantContent += `👤 Name: ${pd.name}\n`;
-            if (pd.contact) assistantContent += `📞 Contact: ${pd.contact}\n`;
-            if (pd.age) assistantContent += `📅 Age: ${pd.age} years\n`;
+      if (data.isCheckpoint) {
+        console.log("[v0] Backend sent checkpoint trigger");
+        // Don't add the checkpoint message to chat, just show the dialog
+        setLoading(false);
+        setTimeout(() => {
+          setShowCheckpoint(true);
+        }, 500);
+        return;
+      }
 
-            if (pd.medicalHistory && pd.medicalHistory.length > 0) {
-              assistantContent += `\n🏥 Medical History:\n`;
-              pd.medicalHistory.forEach((item: string, index: number) => {
-                assistantContent += `   ${index + 1}. ${item}\n`;
-              });
-            }
-
-            assistantContent += `\nIs there anything else you'd like to know about your account?`;
-          }
-        } else if (data.response.answer) {
-          assistantContent = data.response.answer;
-        } else if (data.response.message) {
-          assistantContent = data.response.message;
-        }
-
-        const assistantMessage: Message = {
+      if (data.agentType === "emergency") {
+        const content =
+          data.response.message || data.response.answer || "Emergency response";
+        assistantMessage = {
           role: "assistant",
-          content: assistantContent,
+          content,
           timestamp: new Date(),
+          agentType: "emergency",
+          emergencyNumber: data.response.emergencyNumber,
+          nearbyClinicLocations: data.response.nearbyClinicLocations,
+          needsLocation: data.response.needsLocation,
         };
+      } else {
+        const content =
+          data.response?.answer ||
+          data.response?.message ||
+          "No response available";
+        assistantMessage = {
+          role: "assistant",
+          content,
+          timestamp: new Date(),
+          agentType: data.agentType,
+          severity: data.severity,
+        };
+      }
 
-        setMessages((prev) => [...prev, assistantMessage]);
+      if (assistantMessage) {
+        const finalMessages = [...newMessages, assistantMessage];
+        setMessages(finalMessages);
 
-        const newQAPairCount = qaPairCount + 1;
-        setQaPairCount(newQAPairCount);
+        if (data.agentType === "clinical") {
+          const newQAPairCount = qaPairCount + 1;
+          setQaPairCount(newQAPairCount);
 
-        if (data.summary && data.agentType === "clinical") {
-          setDisplayedSummary(data.summary);
-          setSummaryCreated(true);
-        }
-
-        if (
-          data.agentType === "clinical" &&
-          newQAPairCount >= 5 &&
-          !summaryCreated
-        ) {
-          console.log("[v0] 5 Q/A pairs reached, creating summary...");
-          setTimeout(() => {
-            const updatedMessages = [
-              ...messages,
-              userMessage,
-              assistantMessage,
-            ];
-            createAutoSummary(updatedMessages, data.agentType);
-          }, 1000);
-        } else if (
-          shouldAutoCreateSummary(assistantContent) &&
-          !summaryCreated
-        ) {
-          console.log("[v0] Completion keywords detected, creating summary...");
-          setTimeout(() => {
-            const updatedMessages = [
-              ...messages,
-              userMessage,
-              assistantMessage,
-            ];
-            createAutoSummary(updatedMessages, data.agentType);
-          }, 1000);
+          console.log("[v0] Q/A pair count updated:", {
+            previousCount: qaPairCount,
+            newCount: newQAPairCount,
+            conversationLoop,
+          });
         }
       }
+
+      setLoading(false);
     } catch (error) {
       console.error("Chat error:", error);
-      const errorMessage: Message = {
-        role: "assistant",
-        content:
-          "Sorry, I encountered an error processing your request. Please try again.",
-        timestamp: new Date(),
-      };
-      setMessages((prev) => [...prev, errorMessage]);
-    } finally {
+      setError(
+        error instanceof Error ? error.message : "Failed to send message"
+      );
       setLoading(false);
     }
   };
@@ -377,12 +385,23 @@ export function ChatInterface({
             </p>
             {sessionId && (
               <p className="text-xs text-gray-400 mt-1">
-                Session: {sessionId.substring(0, 12)}... | Q/A Pairs:{" "}
-                {qaPairCount}/5
+                Session: {sessionId.substring(0, 12)}... | Loop:{" "}
+                {conversationLoop} | Q/A Pairs: {qaPairCount}/7
               </p>
             )}
           </div>
           <div className="flex gap-2">
+            {messages.length > 0 && !showEndMessage && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleEndConversation}
+                className="flex items-center gap-2 bg-transparent hover:bg-red-50 hover:text-red-600 hover:border-red-200"
+              >
+                <LogOut className="w-4 h-4" />
+                End Conversation
+              </Button>
+            )}
             {messages.length > 0 && (
               <Button
                 variant="outline"
@@ -417,81 +436,85 @@ export function ChatInterface({
                 <li>• Conversation history summaries</li>
               </ul>
               <p className="text-xs text-gray-500 mt-3">
-                After 5 Q/A exchanges, a summary will automatically be created
-                and sent to your Communications tab.
+                After 7 Q/A exchanges per loop, you'll be asked if you need more
+                information. A summary will be created and sent to your
+                Communications tab when you end the conversation.
               </p>
             </div>
           </div>
         )}
 
-        {messages.length > 0 && !summaryCreated && (
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-start gap-3">
-            <div className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5">
-              <span className="text-sm font-semibold">{qaPairCount}/5</span>
+        {showCheckpoint && (
+          <div className="bg-blue-50 border border-blue-300 rounded-lg p-4 flex flex-col gap-4">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-semibold text-blue-900">
+                  Conversation Checkpoint
+                </p>
+                <p className="text-sm text-blue-800 mt-2">
+                  I have enough information from the {qaPairCount} questions
+                  we've discussed. Would you like to:
+                </p>
+                <ul className="text-sm text-blue-800 space-y-1 mt-2 ml-2">
+                  <li>
+                    • <strong>Continue:</strong> Provide additional information
+                    (7 more questions)
+                  </li>
+                  <li>
+                    • <strong>End Conversation:</strong> I'll create a summary
+                    and send it to your doctor
+                  </li>
+                </ul>
+              </div>
             </div>
-            <div>
-              <p className="text-sm font-semibold text-blue-800">
-                Conversation Progress
-              </p>
-              <p className="text-sm text-blue-700">
-                {qaPairCount < 5
-                  ? `${
-                      5 - qaPairCount
-                    } more Q/A exchanges until automatic summary is created.`
-                  : "Summary is being created..."}
-              </p>
+            <div className="flex gap-3">
+              <Button
+                onClick={handleCheckpointContinue}
+                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
+              >
+                Continue (7 more questions)
+              </Button>
+              <Button
+                onClick={handleCheckpointEnd}
+                variant="outline"
+                className="flex-1 border-blue-300 text-blue-600 hover:bg-blue-100 bg-transparent"
+              >
+                End Conversation
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {showEndMessage && (
+          <div className="bg-green-50 border border-green-300 rounded-lg p-4">
+            <div className="flex items-start gap-3">
+              <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-semibold text-green-900">
+                  Thank You!
+                </p>
+                <p className="text-sm text-green-800 mt-1">
+                  Thanks for your information. I've created a summary and sent
+                  it to your doctor. You can view it in the Communications tab.
+                </p>
+              </div>
             </div>
           </div>
         )}
 
         {displayedSummary && (
-          <div className="bg-green-50 border border-green-200 rounded-lg p-4 flex items-start gap-3">
-            <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
-            <div className="flex-1">
-              <p className="text-sm font-semibold text-green-800">
-                Conversation Summary
-              </p>
-              <p className="text-sm text-green-700 mt-2 whitespace-pre-wrap">
-                {displayedSummary}
-              </p>
-              <p className="text-xs text-green-600 mt-2">
-                This summary has been sent to your doctor's dashboard.
-              </p>
+          <div className="bg-white border border-gray-300 rounded-lg p-4">
+            <h3 className="text-sm font-semibold text-gray-900 mb-2">
+              Conversation Summary
+            </h3>
+            <div className="text-sm text-gray-700 whitespace-pre-wrap">
+              {displayedSummary}
             </div>
           </div>
         )}
 
-        {summaryCreated && !displayedSummary && (
-          <div className="bg-green-50 border border-green-200 rounded-lg p-4 flex items-start gap-3">
-            <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
-            <div>
-              <p className="text-sm font-semibold text-green-800">
-                Summary Created
-              </p>
-              <p className="text-sm text-green-700">
-                Your conversation summary has been automatically saved and sent
-                to the Communications tab with timestamp.
-              </p>
-            </div>
-          </div>
-        )}
-
-        {creatingAutoSummary && (
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-start gap-3">
-            <Loader2 className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5 animate-spin" />
-            <div>
-              <p className="text-sm font-semibold text-blue-800">
-                Creating Summary
-              </p>
-              <p className="text-sm text-blue-700">
-                Your conversation summary is being created and sent to both
-                dashboards...
-              </p>
-            </div>
-          </div>
-        )}
-
-        {displayMessages.map((message, index) => (
+        {messages.map((message, index) => (
           <div
             key={index}
             className={`flex items-start gap-3 ${
@@ -534,6 +557,13 @@ export function ChatInterface({
           </div>
         )}
 
+        {error && (
+          <div className="flex items-center gap-2 text-red-500">
+            <AlertCircle className="w-4 h-4" />
+            <span className="text-sm">{error}</span>
+          </div>
+        )}
+
         <div ref={messagesEndRef} />
       </CardContent>
 
@@ -541,14 +571,22 @@ export function ChatInterface({
         <Input
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Type your health question..."
-          onKeyPress={(e) => e.key === "Enter" && handleSendMessage()}
-          disabled={loading}
+          placeholder={
+            showCheckpoint
+              ? "Please select an option above..."
+              : "Type your health question..."
+          }
+          onKeyPress={(e) =>
+            e.key === "Enter" && !showCheckpoint && handleSendMessage()
+          }
+          disabled={loading || showCheckpoint || showEndMessage}
           className="flex-1"
         />
         <Button
           onClick={handleSendMessage}
-          disabled={loading || !input.trim()}
+          disabled={
+            loading || !input.trim() || showCheckpoint || showEndMessage
+          }
           className="bg-blue-600 hover:bg-blue-700"
         >
           {loading ? (

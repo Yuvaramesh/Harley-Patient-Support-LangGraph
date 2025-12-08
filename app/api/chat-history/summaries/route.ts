@@ -49,7 +49,13 @@ export async function GET(request: NextRequest) {
     }));
 
     console.log(
-      `[v0] Retrieved ${communications.length} conversation summaries for patient ${patientId}`
+      `[v0 API] Retrieved ${communications.length} conversation summaries for patient ${patientId} from CHAT_HISTORY collection`,
+      {
+        userRole,
+        communicationType,
+        collection: "chat_history",
+        NOT_from: "communications or clinical_notes",
+      }
     );
 
     return NextResponse.json({ communications });

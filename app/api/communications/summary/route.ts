@@ -190,20 +190,24 @@ export async function POST(request: NextRequest) {
       sentToDoctor: true,
       communicationType: commType,
       qaPairCount,
-      isConversationComplete: isConversationComplete || false,
+      isConversationComplete: isConversationComplete || true,
       isConversationSummary: true,
     };
 
-    const result = await chatHistoryCollection.insertOne(summaryRecord as any);
+    const chatHistoryResult = await chatHistoryCollection.insertOne(
+      summaryRecord as any
+    );
 
     console.log(
-      `[v0] Summary stored in chat_history with ID: ${result.insertedId}`,
+      `[v0] ✓ Summary stored ONLY in CHAT_HISTORY collection (ID: ${chatHistoryResult.insertedId})`,
       {
         sessionId,
         qaPairCount,
         communicationType: commType,
         severity,
         sentToPatient,
+        collection: "chat_history",
+        NOT_saved_to: "clinical_notes or communications",
       }
     );
 
@@ -245,10 +249,10 @@ export async function POST(request: NextRequest) {
         `[v0] Emergency emails sent - Patient: ${patientAlertSent}, Doctor: ${doctorEmailSent}`
       );
 
-      // Update the summary record to mark emails as sent
+      // Update chat_history record to mark emails as sent
       if (emailSent) {
         await chatHistoryCollection.updateOne(
-          { _id: result.insertedId },
+          { _id: chatHistoryResult.insertedId },
           {
             $set: {
               emailSent: true,
@@ -261,14 +265,14 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: "Summary created and stored in chat history",
+      message: "Summary created and stored in chat_history collection only",
       summarySource,
       sentToPatient,
       communicationType: commType,
       emergencyEmailsSent:
         severity === "high" || severity === "critical" ? emailSent : undefined,
       data: {
-        id: result.insertedId,
+        chatHistoryId: chatHistoryResult.insertedId,
         ...summaryRecord,
       },
     });

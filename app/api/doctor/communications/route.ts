@@ -27,14 +27,20 @@ export async function GET(request: NextRequest) {
       .toArray();
 
     console.log(
-      `[v0] Doctor retrieved ${summaries.length} conversation summaries`,
-      { patientEmail, communicationType }
+      `[v0 API] Doctor fetched ${summaries.length} summaries from CHAT_HISTORY collection`,
+      {
+        patientEmail,
+        communicationType,
+        collection: "chat_history",
+        NOT_from: "communications or clinical_notes",
+      }
     );
 
     return NextResponse.json({
       success: true,
       communications: summaries.map((record: any) => ({
         _id: record._id?.toString() || "",
+        patientId: record.patientId,
         patientEmail: record.patientEmail,
         type: record.communicationType || "clinical",
         summary: record.summary || "",
@@ -45,6 +51,8 @@ export async function GET(request: NextRequest) {
         messageCount: record.messageCount || 0,
         sessionId: record.sessionId,
         qaPairCount: record.qaPairCount,
+        sentToDoctor: record.sentToDoctor !== false,
+        sentToPatient: record.sentToPatient !== false,
       })),
       totalRecords: summaries.length,
     });

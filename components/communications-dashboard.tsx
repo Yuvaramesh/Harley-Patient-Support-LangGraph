@@ -31,12 +31,21 @@ export function CommunicationsDashboard({
   useEffect(() => {
     const fetchCommunications = async () => {
       try {
+        console.log(
+          "[v0 Patient Communications] Fetching summaries from chat_history collection"
+        );
         const response = await fetch(
           `/api/chat-history/summaries?patientId=${patientId}&userRole=patient&type=${
             typeFilter === "all" ? "all" : typeFilter
           }`
         );
         const data = await response.json();
+
+        console.log("[v0 Patient Communications] Fetched summaries:", {
+          count: data.communications?.length || 0,
+          source: "chat_history collection only",
+        });
+
         setCommunications(data.communications || []);
       } catch (error) {
         console.error("Failed to fetch communications:", error);
@@ -57,7 +66,7 @@ export function CommunicationsDashboard({
     if (!text) return null;
 
     // Remove all asterisks for bold markers
-    let formatted = text.replace(/\*\*/g, "");
+    const formatted = text.replace(/\*\*/g, "");
 
     // Split by double newlines to get sections
     const sections = formatted.split("\n\n");
@@ -82,8 +91,8 @@ export function CommunicationsDashboard({
                 if (!line.trim()) return null;
 
                 // Detect bullet points
-                const isBullet = line.trim().match(/^(\d+\.|\•|-|\*)/);
-                const cleanLine = line.replace(/^(\s*(\d+\.|\•|-|\*)\s*)/, "");
+                const isBullet = line.trim().match(/^(\d+\.|•|-|\*)/);
+                const cleanLine = line.replace(/^(\s*(\d+\.|•|-|\*)\s*)/, "");
 
                 return (
                   <div key={lineIdx} className={isBullet ? "flex gap-2" : ""}>
@@ -104,8 +113,8 @@ export function CommunicationsDashboard({
             {lines.map((line, lineIdx) => {
               if (!line.trim()) return null;
 
-              const isBullet = line.trim().match(/^(\d+\.|\•|-|\*)/);
-              const cleanLine = line.replace(/^(\s*(\d+\.|\•|-|\*)\s*)/, "");
+              const isBullet = line.trim().match(/^(\d+\.|•|-|\*)/);
+              const cleanLine = line.replace(/^(\s*(\d+\.|•|-|\*)\s*)/, "");
 
               if (isBullet) {
                 return (
