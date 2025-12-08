@@ -45,14 +45,13 @@ function hasEnoughInformation(qaPairCount: number): boolean {
  * Check if we've reached 7 Q/A pairs and should ask user to continue or end
  */
 function shouldShowCheckpoint(qaPairCount: number): boolean {
-  // Check if qaPairCount is exactly at a multiple of 7
-  const pairsInCurrentLoop = qaPairCount % 7;
-  const shouldShow = qaPairCount > 0 && pairsInCurrentLoop === 0;
+  // This triggers BEFORE asking the next question
+  const shouldShow = qaPairCount > 0 && qaPairCount % 7 === 0;
 
   console.log("[Clinical Agent] Checkpoint check:", {
     qaPairCount,
-    pairsInCurrentLoop,
     shouldShow,
+    calculation: `${qaPairCount} % 7 = ${qaPairCount % 7}`,
   });
 
   return shouldShow;
@@ -86,14 +85,18 @@ export async function clinicalAgent(state: ChatState): Promise<{
   const isCheckpointMoment = shouldShowCheckpoint(state.qaPairCount || 0);
 
   if (isCheckpointMoment) {
-    console.log("[Clinical Agent] Reached 7 Q/A pairs - triggering checkpoint");
+    console.log(
+      "[Clinical Agent] Reached checkpoint at",
+      state.qaPairCount,
+      "Q/A pairs"
+    );
     return {
       answer:
         "I have enough information from our conversation so far. Would you like to continue providing additional information, or would you like me to create a summary and send it to your doctor?",
       severity: "medium",
       needsSummary: false,
       isSummaryResponse: false,
-      isCheckpoint: true,
+      isCheckpoint: true, // This tells frontend to show the checkpoint dialog
     };
   }
 

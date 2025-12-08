@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 
 interface Message {
-  role: "user" | "assistant";
+  role: "user" | "assistant" | "system";
   content: string;
   timestamp: Date;
   agentType?: string;
@@ -47,6 +47,8 @@ export function ChatInterface({ patientId, email }: ChatInterfaceProps) {
   const [currentLoopStartIndex, setCurrentLoopStartIndex] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
+  const [showThankYou, setShowThankYou] = useState(false);
+  const [conversationEnded, setConversationEnded] = useState(false);
 
   const storageKey = `chat_messages_${patientId}`;
   const sessionStorageKey = `session_id_${patientId}`;
@@ -113,6 +115,7 @@ export function ChatInterface({ patientId, email }: ChatInterfaceProps) {
       setShowCheckpoint(false);
       setConversationLoop(1);
       setShowEndMessage(false);
+      setShowThankYou(false);
       sessionStorage.removeItem(storageKey);
       sessionStorage.removeItem(sessionStorageKey);
       const newSessionId = `session_${Date.now()}_${Math.random()
@@ -129,101 +132,109 @@ export function ChatInterface({ patientId, email }: ChatInterfaceProps) {
   };
 
   const createAutoSummary = async (
-    conversationMessages: Array<{
+    messagesToSummarize: Array<{
       role: "user" | "assistant";
       content: string;
       timestamp: string;
     }>,
-    agentType?: string
+    agentType: string
   ) => {
-    if (conversationMessages.length === 0) return;
-
-    setCreatingAutoSummary(true);
     try {
-      const communicationType =
-        agentType === "emergency"
-          ? "emergency"
-          : agentType === "personal"
-          ? "personal"
-          : agentType === "generic_faq"
-          ? "faq"
-          : "clinical";
+      console.log("[v0] ===== CREATING SUMMARY =====");
+      console.log("[v0] Messages to summarize:", messagesToSummarize.length);
+      console.log("[v0] Agent type:", agentType);
+      console.log("[v0] Session ID:", sessionId);
+      console.log("[v0] Will store in chat_history collection");
 
-      const loopSessionId = `${sessionId}_loop${conversationLoop}`;
+      if (!messagesToSummarize || messagesToSummarize.length === 0) {
+        console.error("[v0] No messages to summarize!");
+        return;
+      }
+
+      const messagesToSend: Array<{
+        role: "user" | "assistant";
+        content: string;
+        timestamp: string;
+      }> = messagesToSummarize.map((msg) => ({
+        role: msg.role,
+        content: msg.content,
+        timestamp: msg.timestamp,
+      }));
+
+      const requestBody = {
+        patientId,
+        email,
+        messages: messagesToSend,
+        agentType,
+        sessionId: sessionId,
+        qaPairCount: qaPairCount,
+        isConversationComplete: true,
+      };
+
+      console.log(
+        "[v0] Sending POST request to /api/communications/summary..."
+      );
+      console.log("[v0] Request body:", JSON.stringify(requestBody, null, 2));
 
       const response = await fetch("/api/communications/summary", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          patientId,
-          email,
-          messages: conversationMessages,
-          severity: "medium",
-          communicationType,
-          sessionId: loopSessionId, // Use loop-specific sessionId
-          qaPairCount,
-          isConversationComplete: true,
-          conversationLoop, // Include loop number
-        }),
+        body: JSON.stringify(requestBody),
       });
 
-      const data = await response.json();
+      console.log(
+        "[v0] Response status:",
+        response.status,
+        response.statusText
+      );
 
-      if (!response.ok) {
-        console.error("[v0] Summary API error:", data);
-        if (data.data?.summary) {
-          console.log("[v0] Summary created with fallback method");
-          setDisplayedSummary(data.data.summary);
-          alert(
-            "Your conversation summary has been saved and sent to your doctor successfully."
-          );
-        } else {
-          throw new Error(data.error || "Failed to create summary");
-        }
-      } else {
+      if (response.ok) {
+        const data = await response.json();
         console.log(
-          `[v0] Summary created successfully for loop ${conversationLoop} (${data.summarySource})`
+          "[v0] ✓ Summary created and stored in chat_history successfully!"
         );
-        if (data.data?.summary) {
-          setDisplayedSummary(data.data.summary);
-        }
-        alert(
-          "Your conversation summary has been saved and sent to your doctor successfully."
+        console.log("[v0] Response data:", data);
+      } else {
+        const errorText = await response.text();
+        console.error(
+          "[v0] ✗ Failed to create summary - Status:",
+          response.status
         );
+        console.error("[v0] Error response:", errorText);
       }
     } catch (error) {
-      console.error("[v0] Error creating auto-summary:", error);
-      alert(
-        "Summary creation encountered an issue, but your conversation was saved."
-      );
-    } finally {
-      setCreatingAutoSummary(false);
+      console.error("[v0] ✗ Error creating auto summary:", error);
+      if (error instanceof Error) {
+        console.error("[v0] Error message:", error.message);
+        console.error("[v0] Error stack:", error.stack);
+      }
     }
   };
 
   const handleEndConversation = async () => {
-    if (messages.length === 0) {
-      alert("No conversation to end. Start chatting to create a summary.");
+    console.log("[v0] ===== HANDLE END CONVERSATION CALLED =====");
+    console.log("[v0] Current messages count:", messages.length);
+    console.log("[v0] Session ID:", sessionId);
+
+    setShowCheckpoint(false);
+
+    const allSessionMessages = messages.filter(
+      (msg) => msg.role === "user" || msg.role === "assistant"
+    );
+
+    console.log("[v0] Filtered session messages:", allSessionMessages.length);
+
+    if (allSessionMessages.length === 0) {
+      console.log("[v0] No messages to summarize, skipping summary creation");
       return;
     }
-
-    setShowEndMessage(true);
-
-    const currentLoopMessages = messages.slice(currentLoopStartIndex);
-
-    console.log("[v0] Creating summary for current loop:", {
-      conversationLoop,
-      totalMessages: messages.length,
-      currentLoopStartIndex,
-      currentLoopMessagesCount: currentLoopMessages.length,
-    });
 
     const messagesToSummarize: Array<{
       role: "user" | "assistant";
       content: string;
       timestamp: string;
-    }> = currentLoopMessages.map((msg) => ({
-      role: msg.role,
+    }> = allSessionMessages.map((msg) => ({
+      role: msg.role as "user" | "assistant",
       content: msg.content,
       timestamp:
         msg.timestamp instanceof Date
@@ -231,9 +242,33 @@ export function ChatInterface({ patientId, email }: ChatInterfaceProps) {
           : String(msg.timestamp),
     }));
 
+    console.log(
+      "[v0] Prepared",
+      messagesToSummarize.length,
+      "messages for summary"
+    );
+    console.log("[v0] First message:", messagesToSummarize[0]);
+    console.log(
+      "[v0] Last message:",
+      messagesToSummarize[messagesToSummarize.length - 1]
+    );
+
+    const summaryMessage: Message = {
+      role: "assistant",
+      content:
+        "Thank you for sharing your health information with me. I've created a comprehensive summary and sent it to your doctor. They will review it and may contact you if needed. Take care!",
+      timestamp: new Date(),
+      agentType: "system",
+    };
+    setMessages([...messages, summaryMessage]);
+
+    console.log("[v0] Calling createAutoSummary...");
+    await createAutoSummary(messagesToSummarize, "clinical");
+    console.log("[v0] createAutoSummary completed");
+
     setTimeout(() => {
-      createAutoSummary(messagesToSummarize, "clinical");
-    }, 1000);
+      setConversationEnded(true);
+    }, 2000);
   };
 
   const handleCheckpointContinue = () => {
@@ -260,6 +295,50 @@ export function ChatInterface({ patientId, email }: ChatInterfaceProps) {
     if (showCheckpoint) return;
 
     const currentInput = input;
+
+    const endConversationKeywords = [
+      "end conversation",
+      "end the conversation",
+      "finish conversation",
+      "stop conversation",
+      "create summary",
+      "end chat",
+      "finish chat",
+      "that's all",
+      "thats all",
+      "i'm done",
+      "im done",
+      "goodbye",
+      "bye",
+      "end",
+      "finish",
+      "done",
+      "endconversation",
+    ];
+
+    const isEndingConversation = endConversationKeywords.some(
+      (keyword) =>
+        currentInput.toLowerCase().trim() === keyword ||
+        currentInput.toLowerCase().includes(keyword)
+    );
+
+    if (isEndingConversation && messages.length > 0) {
+      console.log(
+        "[v0] User typed end conversation keyword, creating summary and storing in chat_history..."
+      );
+      setInput("");
+
+      const userMessage: Message = {
+        role: "user",
+        content: currentInput,
+        timestamp: new Date(),
+      };
+      setMessages([...messages, userMessage]);
+
+      await handleEndConversation();
+      return;
+    }
+
     setInput("");
     setLoading(true);
     setError(null);
@@ -274,8 +353,14 @@ export function ChatInterface({ patientId, email }: ChatInterfaceProps) {
     setMessages(newMessages);
 
     try {
-      console.log("[v0] Sending message with sessionId:", sessionId);
-      console.log("[v0] Current Q/A pair count:", qaPairCount);
+      const newQAPairCount = qaPairCount + 1;
+
+      console.log("[v0] Sending message with Q/A count:", {
+        sessionId,
+        currentQAPairCount: qaPairCount,
+        newQAPairCount,
+        conversationLoop,
+      });
 
       const response = await fetch("/api/chat", {
         method: "POST",
@@ -308,12 +393,36 @@ export function ChatInterface({ patientId, email }: ChatInterfaceProps) {
         console.log("[v0] Session ID set:", data.sessionId);
       }
 
+      if (data.shouldEndConversation) {
+        console.log(
+          "[v0] Backend detected end conversation, triggering summary..."
+        );
+        setMessages([
+          ...newMessages,
+          {
+            role: "assistant",
+            content: data.response.answer,
+            timestamp: new Date(),
+            agentType: "system",
+          },
+        ]);
+        setLoading(false);
+        await handleEndConversation();
+        return;
+      }
+
       let assistantMessage: Message | null = null;
 
       if (data.isCheckpoint) {
-        console.log("[v0] Backend sent checkpoint trigger");
-        // Don't add the checkpoint message to chat, just show the dialog
+        console.log(
+          "[v0] Backend triggered checkpoint at",
+          newQAPairCount,
+          "Q/A pairs"
+        );
+        // Update the Q/A count since this exchange is complete
+        setQaPairCount(newQAPairCount);
         setLoading(false);
+        // Show checkpoint dialog after brief delay
         setTimeout(() => {
           setShowCheckpoint(true);
         }, 500);
@@ -351,7 +460,6 @@ export function ChatInterface({ patientId, email }: ChatInterfaceProps) {
         setMessages(finalMessages);
 
         if (data.agentType === "clinical") {
-          const newQAPairCount = qaPairCount + 1;
           setQaPairCount(newQAPairCount);
 
           console.log("[v0] Q/A pair count updated:", {
@@ -391,7 +499,7 @@ export function ChatInterface({ patientId, email }: ChatInterfaceProps) {
             )}
           </div>
           <div className="flex gap-2">
-            {messages.length > 0 && !showEndMessage && (
+            {messages.length > 0 && !showEndMessage && !conversationEnded && (
               <Button
                 variant="outline"
                 size="sm"
@@ -503,6 +611,23 @@ export function ChatInterface({ patientId, email }: ChatInterfaceProps) {
           </div>
         )}
 
+        {showThankYou && (
+          <div className="bg-green-50 border border-green-300 rounded-lg p-4">
+            <div className="flex items-start gap-3">
+              <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-semibold text-green-900">
+                  Thank You!
+                </p>
+                <p className="text-sm text-green-800 mt-1">
+                  Thanks for your information. I've created a summary and sent
+                  it to your doctor. You can view it in the Communications tab.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {displayedSummary && (
           <div className="bg-white border border-gray-300 rounded-lg p-4">
             <h3 className="text-sm font-semibold text-gray-900 mb-2">
@@ -579,13 +704,19 @@ export function ChatInterface({ patientId, email }: ChatInterfaceProps) {
           onKeyPress={(e) =>
             e.key === "Enter" && !showCheckpoint && handleSendMessage()
           }
-          disabled={loading || showCheckpoint || showEndMessage}
+          disabled={
+            loading || showCheckpoint || showEndMessage || conversationEnded
+          }
           className="flex-1"
         />
         <Button
           onClick={handleSendMessage}
           disabled={
-            loading || !input.trim() || showCheckpoint || showEndMessage
+            loading ||
+            !input.trim() ||
+            showCheckpoint ||
+            showEndMessage ||
+            conversationEnded
           }
           className="bg-blue-600 hover:bg-blue-700"
         >

@@ -115,6 +115,9 @@ export const HealthcareGraphState = Annotation.Root({
   isSummaryResponse: Annotation<boolean | undefined>({
     reducer: (current, update) => update ?? current,
   }),
+  isCheckpoint: Annotation<boolean | undefined>({
+    reducer: (current, update) => update ?? current,
+  }), //adding isCheckpoint to state
 });
 
 export type HealthcareGraphStateType = typeof HealthcareGraphState.State;
