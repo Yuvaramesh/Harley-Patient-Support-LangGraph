@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { CheckCircle, Clock, MessageSquare, Calendar } from "lucide-react";
+import { AIChecklistDisplay } from "@/components/checklist-display";
 
 interface Communication {
   _id: string;
@@ -27,12 +28,15 @@ export function CommunicationsDashboard({
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<string>("all");
   const [typeFilter, setTypeFilter] = useState<string>("all");
+  const [expandedSummaries, setExpandedSummaries] = useState<Set<string>>(
+    new Set()
+  );
 
   useEffect(() => {
     const fetchCommunications = async () => {
       try {
         console.log(
-          "[v0 Patient Communications] Fetching summaries from chat_history collection"
+          "[Patient Communications] Fetching summaries from chat_history collection"
         );
         const response = await fetch(
           `/api/chat-history/summaries?patientId=${patientId}&userRole=patient&type=${
@@ -41,7 +45,7 @@ export function CommunicationsDashboard({
         );
         const data = await response.json();
 
-        console.log("[v0 Patient Communications] Fetched summaries:", {
+        console.log("[Patient Communications] Fetched summaries:", {
           count: data.communications?.length || 0,
           source: "chat_history collection only",
         });
@@ -62,20 +66,28 @@ export function CommunicationsDashboard({
       ? communications
       : communications.filter((comm) => comm.severity === filter);
 
+  const toggleSummaryExpansion = (id: string) => {
+    setExpandedSummaries((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(id)) {
+        newSet.delete(id);
+      } else {
+        newSet.add(id);
+      }
+      return newSet;
+    });
+  };
+
   const formatSummary = (text: string) => {
     if (!text) return null;
 
-    // Remove all asterisks for bold markers
     const formatted = text.replace(/\*\*/g, "");
-
-    // Split by double newlines to get sections
     const sections = formatted.split("\n\n");
 
     return sections.map((section, idx) => {
       const lines = section.split("\n");
       const firstLine = lines[0];
 
-      // Check if this is a header (ends with : or is all caps-ish)
       const isHeader =
         firstLine.endsWith(":") ||
         (firstLine.length < 50 && firstLine === firstLine.toUpperCase());
@@ -90,7 +102,6 @@ export function CommunicationsDashboard({
               {lines.slice(1).map((line, lineIdx) => {
                 if (!line.trim()) return null;
 
-                // Detect bullet points
                 const isBullet = line.trim().match(/^(\d+\.|•|-|\*)/);
                 const cleanLine = line.replace(/^(\s*(\d+\.|•|-|\*)\s*)/, "");
 
@@ -107,7 +118,6 @@ export function CommunicationsDashboard({
           </div>
         );
       } else {
-        // Regular paragraph or single line
         return (
           <div key={idx} className="mb-3">
             {lines.map((line, lineIdx) => {
@@ -186,7 +196,8 @@ export function CommunicationsDashboard({
           Conversation Summaries
         </CardTitle>
         <p className="text-sm text-gray-600 mt-2">
-          Your saved conversation summaries with timestamps
+          Your saved conversation summaries with AI-powered documentation
+          quality analysis
         </p>
         <div className="flex gap-2 mt-4 flex-wrap">
           <div className="flex gap-2 items-center">
@@ -294,6 +305,26 @@ export function CommunicationsDashboard({
                   <div className="prose prose-sm max-w-none">
                     {formatSummary(comm.summary)}
                   </div>
+                </div>
+
+                {/* AI-Powered Checklist Section */}
+                <div className="mt-4 pt-4 border-t border-gray-200">
+                  <button
+                    onClick={() => toggleSummaryExpansion(comm._id)}
+                    className="text-sm font-medium text-blue-600 hover:text-blue-700 flex items-center gap-2 mb-3"
+                  >
+                    {expandedSummaries.has(comm._id) ? "▼" : "▶"} View AI
+                    Documentation Quality Analysis
+                  </button>
+
+                  {expandedSummaries.has(comm._id) && (
+                    <div className="mt-3">
+                      <AIChecklistDisplay
+                        summary={comm.summary}
+                        showStats={true}
+                      />
+                    </div>
+                  )}
                 </div>
               </div>
             ))}

@@ -10,6 +10,7 @@ import {
   User,
   Phone,
 } from "lucide-react";
+import { AIChecklistDisplay } from "@/components/checklist-display";
 
 interface Communication {
   _id: string;
@@ -47,6 +48,9 @@ export function DoctorDashboard({ doctorEmail }: DoctorDashboardProps) {
   const [emailFilter, setEmailFilter] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
   const [severityFilter, setSeverityFilter] = useState("all");
+  const [expandedSummaries, setExpandedSummaries] = useState<Set<string>>(
+    new Set()
+  );
 
   useEffect(() => {
     fetchCommunications();
@@ -63,7 +67,7 @@ export function DoctorDashboard({ doctorEmail }: DoctorDashboardProps) {
       const data = await response.json();
 
       console.log(
-        "[v0 Doctor Dashboard] Fetched summaries from chat_history collection:",
+        "[Doctor Dashboard] Fetched summaries from chat_history collection:",
         {
           count: data.communications?.length || 0,
           source: "chat_history collection only",
@@ -124,20 +128,28 @@ export function DoctorDashboard({ doctorEmail }: DoctorDashboardProps) {
     setFilteredComms(filtered);
   };
 
+  const toggleSummaryExpansion = (id: string) => {
+    setExpandedSummaries((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(id)) {
+        newSet.delete(id);
+      } else {
+        newSet.add(id);
+      }
+      return newSet;
+    });
+  };
+
   const formatSummary = (text: string) => {
     if (!text) return null;
 
-    // Remove all asterisks for bold markers
     const formatted = text.replace(/\*\*/g, "");
-
-    // Split by double newlines to get sections
     const sections = formatted.split("\n\n");
 
     return sections.map((section, idx) => {
       const lines = section.split("\n");
       const firstLine = lines[0];
 
-      // Check if this is a header (ends with : or is all caps-ish)
       const isHeader =
         firstLine.endsWith(":") ||
         (firstLine.length < 50 && firstLine === firstLine.toUpperCase());
@@ -150,7 +162,6 @@ export function DoctorDashboard({ doctorEmail }: DoctorDashboardProps) {
               {lines.slice(1).map((line, lineIdx) => {
                 if (!line.trim()) return null;
 
-                // Detect bullet points
                 const isBullet = line.trim().match(/^(\d+\.|•|-|\*)/);
                 const cleanLine = line.replace(/^(\s*(\d+\.|•|-|\*)\s*)/, "");
 
@@ -165,7 +176,6 @@ export function DoctorDashboard({ doctorEmail }: DoctorDashboardProps) {
           </div>
         );
       } else {
-        // Regular paragraph or single line
         return (
           <div key={idx} className="mb-3">
             {lines.map((line, lineIdx) => {
@@ -476,6 +486,26 @@ export function DoctorDashboard({ doctorEmail }: DoctorDashboardProps) {
                     <div className="prose prose-sm max-w-none">
                       {formatSummary(comm.summary || comm.answer)}
                     </div>
+                  </div>
+
+                  {/* AI-Powered Checklist Section */}
+                  <div className="mt-4 pt-4 border-t border-gray-200">
+                    <button
+                      onClick={() => toggleSummaryExpansion(comm._id)}
+                      className="text-sm font-medium text-blue-600 hover:text-blue-700 flex items-center gap-2 mb-3"
+                    >
+                      {expandedSummaries.has(comm._id) ? "▼" : "▶"} View AI
+                      Documentation Quality Analysis
+                    </button>
+
+                    {expandedSummaries.has(comm._id) && (
+                      <div className="mt-3">
+                        <AIChecklistDisplay
+                          summary={comm.summary || comm.answer}
+                          showStats={true}
+                        />
+                      </div>
+                    )}
                   </div>
 
                   <div className="mt-3 flex items-center gap-4 text-xs">
