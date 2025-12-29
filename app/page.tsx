@@ -1,12 +1,14 @@
-// app/page.tsx
+// app/page.tsx (Updated with enhanced registration)
 "use client";
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChatInterface } from "@/components/chat-interface";
 import { CommunicationsDashboard } from "@/components/communications-dashboard";
+import { EnhancedPatientRegistration } from "@/components/patient-registration";
+import { PatientProfileViewer } from "@/components/patient-profile-viewer";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { User, Stethoscope, Loader2 } from "lucide-react";
+import { User, Stethoscope } from "lucide-react";
 
 export default function Home() {
   const [patientId, setPatientId] = useState("");
@@ -14,48 +16,20 @@ export default function Home() {
   const [name, setName] = useState("");
   const [contact, setContact] = useState("");
   const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [inputEmail, setInputEmail] = useState("");
-  const [inputName, setInputName] = useState("");
-  const [inputContact, setInputContact] = useState("");
   const [showPortalSelection, setShowPortalSelection] = useState(true);
-  const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
 
-  const handleLogin = async () => {
-    if (!inputEmail.trim() || !inputName.trim() || !inputContact.trim()) {
-      alert("Please enter email, name, and contact number");
-      return;
-    }
+  const handleRegistrationComplete = (patientData: any) => {
+    setEmail(patientData.email);
+    setName(patientData.name);
+    setContact(patientData.contact);
+    setPatientId(patientData.patientId);
+    setIsLoggedIn(true);
 
-    setIsLoading(true);
-    try {
-      // Store patient profile in MongoDB
-      const response = await fetch("/api/patient/profile", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: inputEmail,
-          name: inputName,
-          contact: inputContact,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to create patient profile");
-      }
-
-      const newPatientId = inputEmail.replace(/[^a-zA-Z0-9]/g, "");
-      setEmail(inputEmail);
-      setName(inputName);
-      setContact(inputContact);
-      setPatientId(newPatientId);
-      setIsLoggedIn(true);
-    } catch (error) {
-      console.error("Login error:", error);
-      alert("Failed to create patient profile. Please try again.");
-    } finally {
-      setIsLoading(false);
-    }
+    console.log("[Patient Portal] Registration completed:", {
+      patientId: patientData.patientId,
+      hasDetailedProfile: !!patientData.profileData,
+    });
   };
 
   const handleDoctorPortal = () => {
@@ -132,7 +106,7 @@ export default function Home() {
   if (!isLoggedIn) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-blue-100 flex items-center justify-center p-4">
-        <div className="bg-white rounded-lg shadow-lg p-8 max-w-md w-full">
+        <div className="w-full max-w-3xl">
           <button
             onClick={() => setShowPortalSelection(true)}
             className="text-sm text-blue-600 hover:text-blue-700 mb-4"
@@ -140,61 +114,16 @@ export default function Home() {
             ← Back to portal selection
           </button>
 
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">
-            Harley Health
-          </h1>
-          <p className="text-gray-600 mb-6">
-            Your intelligent healthcare portal
-          </p>
-
-          <div className="space-y-4">
-            <input
-              type="text"
-              value={inputName}
-              onChange={(e) => setInputName(e.target.value)}
-              placeholder="Enter your full name"
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 focus:border-transparent outline-none"
-              disabled={isLoading}
-            />
-
-            <input
-              type="tel"
-              value={inputContact}
-              onChange={(e) => setInputContact(e.target.value)}
-              placeholder="Enter your contact number"
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 focus:border-transparent outline-none"
-              disabled={isLoading}
-            />
-
-            <input
-              type="email"
-              value={inputEmail}
-              onChange={(e) => setInputEmail(e.target.value)}
-              placeholder="Enter your email"
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 focus:border-transparent outline-none"
-              disabled={isLoading}
-              onKeyPress={(e) => e.key === "Enter" && handleLogin()}
-            />
-
-            <button
-              onClick={handleLogin}
-              disabled={isLoading}
-              className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-semibold py-2 px-4 rounded-lg transition flex items-center justify-center gap-2"
-            >
-              {isLoading ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Creating Profile...
-                </>
-              ) : (
-                "Enter Portal"
-              )}
-            </button>
+          <div className="text-center mb-8">
+            <h1 className="text-4xl font-bold text-gray-900 mb-2">
+              Welcome to Harley Health
+            </h1>
+            <p className="text-gray-600">Your intelligent healthcare portal</p>
           </div>
 
-          <p className="text-xs text-gray-500 text-center mt-4">
-            Demo mode - Enter your details to continue
-          </p>
+          <EnhancedPatientRegistration
+            onComplete={handleRegistrationComplete}
+          />
         </div>
       </div>
     );
@@ -222,9 +151,10 @@ export default function Home() {
         </div>
 
         <Tabs defaultValue="chat" className="w-full">
-          <TabsList className="grid w-full grid-cols-2 mb-6">
+          <TabsList className="grid w-full grid-cols-3 mb-6">
             <TabsTrigger value="chat">Chat Assistant</TabsTrigger>
             <TabsTrigger value="communications">Communications</TabsTrigger>
+            <TabsTrigger value="profile">My Profile</TabsTrigger>
           </TabsList>
 
           <TabsContent value="chat" className="space-y-4">
@@ -238,6 +168,10 @@ export default function Home() {
 
           <TabsContent value="communications" className="space-y-4">
             <CommunicationsDashboard patientId={patientId} />
+          </TabsContent>
+
+          <TabsContent value="profile" className="space-y-4">
+            <PatientProfileViewer email={email} />
           </TabsContent>
         </Tabs>
       </div>

@@ -1,3 +1,4 @@
+// lib/types.ts (Enhanced Patient Interface)
 import type { ObjectId } from "mongodb";
 
 export interface ChatMessage {
@@ -5,6 +6,7 @@ export interface ChatMessage {
   content: string;
   timestamp: Date;
 }
+
 export interface Doctor {
   dr_email?: string;
 }
@@ -23,20 +25,93 @@ export interface ChatState {
   qaPairCount?: number;
 }
 
+// Enhanced Medication History Interface
+export interface MedicationHistory {
+  name: string;
+  dosage?: string;
+  startingWeight?: number;
+  currentlyTaking: boolean;
+  lastDoseDate?: string;
+  sideEffects?: string[];
+}
+
+// Order Details Interface
+export interface OrderDetails {
+  orderId: number;
+  product: string;
+  productPlan: string;
+  dosage: string;
+  orderDate: string;
+  orderState: string;
+}
+
+// Current Order Information
+export interface CurrentOrderInfo {
+  feelingRating?: string;
+  sideEffects?: string;
+  sideEffectsDetails?: string;
+  severityRating?: string;
+  takingAsPrescribed?: string;
+  medicationChanges?: string;
+}
+
+// Enhanced Patient Interface
 export interface Patient {
   _id?: ObjectId;
   email: string;
   name: string;
   contact: string;
-  age?: number;
+  patientId?: string;
+
+  // Basic Demographics
+  age?: string;
+  ethnicity?: string;
+  sex?: string;
+
+  // Physical Measurements
+  height?: number; // in cm
+  weight?: number; // in kg
+  bmi?: number;
+  currentWeight?: number;
+  goalWeight?: number;
+
+  // Weight Management
+  weightLossDuration?: string;
+  weightLossApproaches?: string;
+
+  // Medical History
+  diabetesStatus?: string;
+  medicalConditions?: string[];
+  otherMedicalConditions?: string;
+
+  // Medications
+  medicationHistory?: MedicationHistory[];
+  currentMedications?: string;
+
+  // Allergies
+  allergies?: string[];
+
+  // GP Information
+  gpNotification?: boolean;
+  gpEmail?: string;
+  assignedDoctorEmail?: string;
+
+  // Order Information
+  currentOrderInfo?: CurrentOrderInfo;
+  orderHistory?: OrderDetails[];
+  totalOrders?: number;
+
+  // Legacy fields
   medicalHistory?: string[];
   geneticHistory?: string[];
   emergencyContact?: string;
   emergencyNumber?: string;
-  patientId?: string;
+
+  // Timestamps
   createdAt: Date;
   updatedAt: Date;
 }
+
 export interface Communication {
   _id?: ObjectId;
   patientId: string;
