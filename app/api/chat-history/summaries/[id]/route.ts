@@ -8,10 +8,11 @@ import { ObjectId } from "mongodb";
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  // ← params is now a Promise
   try {
-    const { id } = params;
+    const { id } = await params; // ← await params here
 
     // Validate ObjectId
     if (!ObjectId.isValid(id)) {
@@ -67,8 +68,9 @@ export async function GET(
  */
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> } // ← params is now a Promise
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  // ← params is now a Promise
   try {
     const { id } = await params; // ← await params here
     console.log(id);
@@ -194,15 +196,17 @@ export async function PATCH(
     );
   }
 }
+
 /**
  * DELETE endpoint to delete a specific summary by ID
  */
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  // ← params is now a Promise
   try {
-    const { id } = params;
+    const { id } = await params; // ← await params here
 
     // Validate ObjectId
     if (!ObjectId.isValid(id)) {
