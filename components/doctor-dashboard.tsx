@@ -1,3 +1,4 @@
+// components/doctor-dashboard.tsx (UPDATED)
 "use client";
 
 import { useState, useEffect } from "react";
@@ -10,7 +11,7 @@ import {
   User,
   Phone,
 } from "lucide-react";
-import { AIChecklistDisplay } from "@/components/checklist-display";
+import { ProfileChecklistDisplay } from "@/components/profile-checklist-display";
 
 interface Communication {
   _id: string;
@@ -77,6 +78,7 @@ export function DoctorDashboard({ doctorEmail }: DoctorDashboardProps) {
       if (data.success) {
         setCommunications(data.communications);
 
+        // Fetch patient info for each communication
         data.communications.forEach(async (comm: Communication) => {
           if (comm.patientEmail && !patientInfo.has(comm.patientId)) {
             try {
@@ -381,15 +383,14 @@ export function DoctorDashboard({ doctorEmail }: DoctorDashboardProps) {
       <div className="bg-white rounded-lg shadow">
         <div className="p-6 border-b border-gray-200">
           <h3 className="text-lg font-semibold text-gray-900">
-            Conversation Summaries ({filteredComms.length})
+            Patient Summaries with Profile Analysis ({filteredComms.length})
           </h3>
         </div>
 
         <div className="divide-y divide-gray-200 max-h-[800px] overflow-y-auto">
           {filteredComms.length === 0 ? (
             <div className="p-8 text-center text-gray-500">
-              No summaries found. Patients will see summaries after completing
-              conversations.
+              No summaries found matching filters.
             </div>
           ) : (
             filteredComms.map((comm) => {
@@ -473,7 +474,7 @@ export function DoctorDashboard({ doctorEmail }: DoctorDashboardProps) {
                     </div>
                   )}
 
-                  {/* Professional Summary */}
+                  {/* Medical Summary */}
                   <div className="bg-white rounded-lg border border-gray-200 p-5">
                     <div className="flex items-center justify-between mb-3 pb-2 border-b border-gray-200">
                       <h4 className="text-base font-semibold text-gray-900">
@@ -488,20 +489,22 @@ export function DoctorDashboard({ doctorEmail }: DoctorDashboardProps) {
                     </div>
                   </div>
 
-                  {/* AI-Powered Checklist Section */}
+                  {/* AI Profile Comparison Section */}
                   <div className="mt-4 pt-4 border-t border-gray-200">
                     <button
                       onClick={() => toggleSummaryExpansion(comm._id)}
                       className="text-sm font-medium text-blue-600 hover:text-blue-700 flex items-center gap-2 mb-3"
                     >
                       {expandedSummaries.has(comm._id) ? "▼" : "▶"} View AI
-                      Documentation Quality Analysis
+                      Profile Comparison & Clinical Analysis
                     </button>
 
                     {expandedSummaries.has(comm._id) && (
                       <div className="mt-3">
-                        <AIChecklistDisplay
+                        <ProfileChecklistDisplay
                           summary={comm.summary || comm.answer}
+                          patientId={comm.patientId}
+                          patientEmail={comm.patientEmail}
                           showStats={true}
                         />
                       </div>

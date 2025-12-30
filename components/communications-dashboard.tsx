@@ -1,13 +1,15 @@
+// components/communications-dashboard.tsx (UPDATED)
 "use client";
 
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { CheckCircle, Clock, MessageSquare, Calendar } from "lucide-react";
-import { AIChecklistDisplay } from "@/components/checklist-display";
+import { ProfileChecklistDisplay } from "@/components/profile-checklist-display";
 
 interface Communication {
   _id: string;
+  patientId: string;
   type: "clinical" | "faq" | "personal" | "emergency";
   summary: string;
   severity?: string;
@@ -19,10 +21,12 @@ interface Communication {
 
 interface CommunicationsDashboardProps {
   patientId: string;
+  patientEmail?: string;
 }
 
 export function CommunicationsDashboard({
   patientId,
+  patientEmail,
 }: CommunicationsDashboardProps) {
   const [communications, setCommunications] = useState<Communication[]>([]);
   const [loading, setLoading] = useState(true);
@@ -193,11 +197,11 @@ export function CommunicationsDashboard({
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <MessageSquare className="w-5 h-5" />
-          Conversation Summaries
+          Conversation Summaries with Profile Analysis
         </CardTitle>
         <p className="text-sm text-gray-600 mt-2">
-          Your saved conversation summaries with AI-powered documentation
-          quality analysis
+          Your conversation summaries with AI-powered profile comparison and
+          documentation quality analysis
         </p>
         <div className="flex gap-2 mt-4 flex-wrap">
           <div className="flex gap-2 items-center">
@@ -307,20 +311,22 @@ export function CommunicationsDashboard({
                   </div>
                 </div>
 
-                {/* AI-Powered Checklist Section */}
+                {/* AI-Powered Profile Checklist Section */}
                 <div className="mt-4 pt-4 border-t border-gray-200">
                   <button
                     onClick={() => toggleSummaryExpansion(comm._id)}
                     className="text-sm font-medium text-blue-600 hover:text-blue-700 flex items-center gap-2 mb-3"
                   >
                     {expandedSummaries.has(comm._id) ? "▼" : "▶"} View AI
-                    Documentation Quality Analysis
+                    Profile Comparison & Documentation Analysis
                   </button>
 
                   {expandedSummaries.has(comm._id) && (
                     <div className="mt-3">
-                      <AIChecklistDisplay
+                      <ProfileChecklistDisplay
                         summary={comm.summary}
+                        patientId={comm.patientId}
+                        patientEmail={patientEmail}
                         showStats={true}
                       />
                     </div>
