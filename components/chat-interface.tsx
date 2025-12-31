@@ -570,8 +570,9 @@ export function ChatInterface({ patientId, email }: ChatInterfaceProps) {
                     (7 more questions)
                   </li>
                   <li>
-                    • <strong>End Conversation:</strong> I'll create a summary
-                    and send it to your doctor
+                    • <strong>End Conversation:</strong> or End Session by type
+                    "end conversation" I'll create a summary and send it to your
+                    doctor
                   </li>
                 </ul>
               </div>
