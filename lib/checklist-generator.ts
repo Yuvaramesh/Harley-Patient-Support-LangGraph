@@ -1,9 +1,6 @@
-// lib/ai-checklist-generator.ts
-import { GoogleGenerativeAI } from "@google/generative-ai";
+// lib/checklist-generator.ts
+import { generateJSONContent } from "@/lib/openai";
 import { retryWithBackoff } from "./retry-utility";
-
-const genai = new GoogleGenerativeAI(process.env.NEXT_PUBLIC_GEMINI_API_KEY!);
-const model = genai.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
 
 /**
  * Interface for AI-generated checklist items
@@ -35,7 +32,7 @@ interface ChecklistGenerationResponse {
  * Generate checklist using AI based on medical summary
  */
 export async function generateAIChecklist(
-  summary: string
+  summary: string,
 ): Promise<AIChecklistItem[]> {
   if (!summary || summary.trim().length === 0) {
     console.warn("[AI Checklist] Empty summary provided");
@@ -97,30 +94,22 @@ IMPORTANT RULES:
 3. Be specific in labels (mention actual symptoms/conditions found)
 4. overallCompleteness: 0-100 (how complete is documentation)
 5. qualityScore: 0-100 (overall documentation quality)
-6. missingElements: Array of critical info that should have been included
-7. Respond with ONLY the JSON object, no markdown, no explanations`;
+6. missingElements: Array of critical info that should have been included`;
 
   try {
     console.log("[AI Checklist] Generating checklist for summary...");
 
-    const response = await retryWithBackoff(
+    const responseText = await retryWithBackoff(
       async () => {
-        return await model.generateContent(prompt);
+        return await generateJSONContent(prompt);
       },
       3,
-      1000
+      1000,
     );
-
-    let responseText = response.response.text().trim();
-
-    // Remove markdown code blocks if present
-    responseText = responseText
-      .replace(/```json\n?/g, "")
-      .replace(/```\n?/g, "");
 
     console.log(
       "[AI Checklist] Raw AI response:",
-      responseText.substring(0, 200)
+      responseText.substring(0, 200),
     );
 
     const parsedResponse: ChecklistGenerationResponse =
@@ -139,7 +128,7 @@ IMPORTANT RULES:
         category: item.category,
         checked: item.checked,
         importance: item.importance,
-      })
+      }),
     );
 
     // Add quality metadata items
@@ -150,7 +139,7 @@ IMPORTANT RULES:
       checklistItems.push({
         id: `ai-item-missing-${Date.now()}`,
         label: `Missing elements identified: ${parsedResponse.missingElements.join(
-          ", "
+          ", ",
         )}`,
         category: "Documentation Quality",
         checked: false,
@@ -177,7 +166,7 @@ IMPORTANT RULES:
     console.log(
       "[AI Checklist] Successfully generated",
       checklistItems.length,
-      "items"
+      "items",
     );
 
     return checklistItems;
@@ -267,7 +256,7 @@ function generateFallbackChecklist(summary: string): AIChecklistItem[] {
  * Group checklist items by category
  */
 export function groupChecklistByCategory(
-  checklist: AIChecklistItem[]
+  checklist: AIChecklistItem[],
 ): Record<string, AIChecklistItem[]> {
   const grouped: Record<string, AIChecklistItem[]> = {};
 
@@ -285,7 +274,7 @@ export function groupChecklistByCategory(
  * Calculate checklist completion percentage
  */
 export function getChecklistCompletionPercentage(
-  checklist: AIChecklistItem[]
+  checklist: AIChecklistItem[],
 ): number {
   if (checklist.length === 0) return 0;
 
@@ -313,7 +302,7 @@ export function getSummaryStatistics(summary: string) {
  * Get importance color for UI
  */
 export function getImportanceColor(
-  importance: AIChecklistItem["importance"]
+  importance: AIChecklistItem["importance"],
 ): string {
   switch (importance) {
     case "critical":

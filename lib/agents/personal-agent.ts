@@ -1,5 +1,5 @@
 // lib/agents/personal-agent.ts
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { generateContent } from "@/lib/openai";
 import type { ChatState } from "../types";
 import { getCollection } from "../mongodb";
 import type { Communication, Patient, ChatHistory } from "../types";
@@ -18,9 +18,6 @@ export interface PersonalData {
   emergencyNumber?: string;
   contact?: string;
 }
-
-const genai = new GoogleGenerativeAI(process.env.NEXT_PUBLIC_GEMINI_API_KEY!);
-const model = genai.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
 
 /**
  * Remove markdown formatting from text
@@ -66,12 +63,6 @@ export async function personalAgent(state: ChatState): Promise<{
 
   if (isPersonalDataRequest) {
     console.log("[PersonalAgent] Personal data request detected");
-    console.log(
-      "[PersonalAgent] State - email:",
-      state.email,
-      "patientId:",
-      state.patientId
-    );
 
     if (!state.email && !state.patientId) {
       console.log("[PersonalAgent] Missing both email and patientId");
@@ -89,29 +80,18 @@ export async function personalAgent(state: ChatState): Promise<{
         state.email && state.patientId
           ? { $or: [{ email: state.email }, { patientId: state.patientId }] }
           : state.email
-          ? { email: state.email }
-          : { patientId: state.patientId };
-
-      console.log(
-        "[PersonalAgent] Querying patients collection with filter:",
-        query_filter
-      );
+            ? { email: state.email }
+            : { patientId: state.patientId };
 
       const patientData = await patientsCollection.findOne(query_filter);
 
       if (!patientData) {
-        console.log("[PersonalAgent] Patient not found in database");
         return {
           answer:
             "I couldn't find your patient profile in our system. Please ensure you've completed your initial registration.",
           needsEmail: false,
         };
       }
-
-      console.log("[PersonalAgent] Patient found:", {
-        email: patientData.email,
-        name: patientData.name,
-      });
 
       const personalData: PersonalData = {
         email: patientData.email || state.email,
@@ -151,10 +131,6 @@ export async function personalAgent(state: ChatState): Promise<{
 
       response += `\nIs there anything else you'd like to know about your account?`;
 
-      console.log(
-        "[PersonalAgent] Personal data response prepared successfully"
-      );
-
       return {
         answer: response,
         needsEmail: false,
@@ -180,18 +156,7 @@ export async function personalAgent(state: ChatState): Promise<{
     query.includes("before");
 
   if (isHistoryRequest) {
-    console.log("[PersonalAgent] History request detected");
-    console.log(
-      "[PersonalAgent] State - email:",
-      state.email,
-      "patientId:",
-      state.patientId
-    );
-
     if (!state.email && !state.patientId) {
-      console.log(
-        "[PersonalAgent] Missing both email and patientId for history"
-      );
       return {
         answer:
           "To retrieve your conversation history, I need your email address. Please provide your registered email address.",
@@ -200,24 +165,15 @@ export async function personalAgent(state: ChatState): Promise<{
     }
 
     try {
-      const commsCollection = await getCollection<Communication>(
-        "communications"
-      );
-      const chatHistoryCollection = await getCollection<ChatHistory>(
-        "chat_history"
-      );
+      const commsCollection =
+        await getCollection<Communication>("communications");
 
       const filter =
         state.patientId && state.email
           ? { patientId: state.patientId }
           : state.patientId
-          ? { patientId: state.patientId }
-          : { patientEmail: state.email };
-
-      console.log(
-        "[PersonalAgent] Fetching communications with filter:",
-        filter
-      );
+            ? { patientId: state.patientId }
+            : { patientEmail: state.email };
 
       const conversationHistory = await commsCollection
         .find(filter)
@@ -225,14 +181,7 @@ export async function personalAgent(state: ChatState): Promise<{
         .limit(20)
         .toArray();
 
-      console.log(
-        "[PersonalAgent] Found",
-        conversationHistory.length,
-        "records in communications collection"
-      );
-
       if (conversationHistory.length === 0) {
-        console.log("[PersonalAgent] No conversation history found");
         return {
           answer:
             "I couldn't find any previous conversations for your account. This might be your first interaction with our healthcare assistant.",
@@ -269,19 +218,15 @@ Requirements:
 - Flow naturally from one point to the next`;
 
       try {
-        console.log("[PersonalAgent] Generating AI summary from history...");
-        const response = await retryWithBackoff(
+        const rawSummary = await retryWithBackoff(
           async () => {
-            return await model.generateContent(summaryPrompt);
+            return await generateContent(summaryPrompt);
           },
           3,
-          1000
+          1000,
         );
 
-        const rawSummary = response.response.text();
         const summary = cleanMarkdown(rawSummary);
-
-        console.log("[PersonalAgent] AI summary generated successfully");
 
         return {
           answer: `${summary}\n\nWould you like details about any specific conversation?`,
@@ -292,18 +237,16 @@ Requirements:
         console.error("[PersonalAgent] Error generating summary:", error);
 
         const topics = Array.from(
-          new Set(conversationHistory.map((c) => c.type))
+          new Set(conversationHistory.map((c) => c.type)),
         ).join(", ");
         const firstDate = new Date(
-          conversationHistory[conversationHistory.length - 1].createdAt
+          conversationHistory[conversationHistory.length - 1].createdAt,
         ).toLocaleDateString();
         const lastDate = new Date(
-          conversationHistory[0].createdAt
+          conversationHistory[0].createdAt,
         ).toLocaleDateString();
 
-        const basicSummary = `You have ${conversationHistory.length} recorded interactions with our healthcare assistant spanning from ${firstDate} to ${lastDate}. Your conversations have covered topics including ${topics}, with various health-related questions and personalized guidance provided throughout. I'm currently experiencing technical difficulties generating a detailed AI summary, but your complete conversation history has been retrieved successfully.`;
-
-        console.log("[PersonalAgent] Using fallback summary");
+        const basicSummary = `You have ${conversationHistory.length} recorded interactions with our healthcare assistant spanning from ${firstDate} to ${lastDate}. Your conversations have covered topics including ${topics}, with various health-related questions and personalized guidance provided throughout.`;
 
         return {
           answer: `${basicSummary}\n\nWould you like details about any specific conversation?`,
@@ -314,7 +257,7 @@ Requirements:
     } catch (error) {
       console.error(
         "[PersonalAgent] Error fetching conversation history:",
-        error
+        error,
       );
       return {
         answer:
@@ -341,15 +284,14 @@ IMPORTANT: Write in plain text with NO markdown formatting. Do not use asterisks
 Keep the response warm, personal, and helpful.`;
 
   try {
-    const response = await retryWithBackoff(
+    const rawAnswer = await retryWithBackoff(
       async () => {
-        return await model.generateContent(prompt);
+        return await generateContent(prompt);
       },
       3,
-      1000
+      1000,
     );
 
-    const rawAnswer = response.response.text();
     const cleanAnswer = cleanMarkdown(rawAnswer);
 
     return {

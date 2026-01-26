@@ -1,30 +1,28 @@
+// app/api/chat/route.ts
 import { type NextRequest, NextResponse } from "next/server";
 import { runHealthcareGraph } from "@/lib/langgraph/graph";
 import type { ChatMessage } from "@/lib/types";
 import { v4 as uuidv4 } from "uuid";
 import { getCollection } from "@/lib/mongodb";
-import { GoogleGenerativeAI } from "@google/generative-ai";
-
-const genai = new GoogleGenerativeAI(process.env.NEXT_PUBLIC_GEMINI_API_KEY!);
-const model = genai.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
+import { generateContent } from "@/lib/openai";
 
 /**
- * Generate summary using LLM with retry logic
+ * Generate summary using OpenAI with retry logic
  */
 async function generateSummaryWithRetry(
   conversationText: string,
-  maxRetries = 3
+  maxRetries = 3,
 ): Promise<string> {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       console.log(
-        `[API] Generating summary - Attempt ${attempt}/${maxRetries}`
-      );
-      const response = await model.generateContent(
-        `Please create a concise medical summary of this patient conversation. Focus on key symptoms, concerns, and assessment. Keep it professional, structured, and factual. Do NOT provide treatment recommendations.\n\nConversation:\n${conversationText}`
+        `[API] Generating summary - Attempt ${attempt}/${maxRetries}`,
       );
 
-      const summary = response.response.text();
+      const prompt = `Please create a concise medical summary of this patient conversation. Focus on key symptoms, concerns, and assessment. Keep it professional, structured, and factual. Do NOT provide treatment recommendations.\n\nConversation:\n${conversationText}`;
+
+      const summary = await generateContent(prompt);
+
       console.log("[API] Summary generated successfully");
       return summary;
     } catch (error: any) {
@@ -107,7 +105,7 @@ export async function POST(request: NextRequest) {
     if (!patientId || !query) {
       return NextResponse.json(
         { error: "Missing required fields: patientId and query are required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -135,12 +133,12 @@ export async function POST(request: NextRequest) {
     ];
 
     const isEndingConversation = endConversationKeywords.some((keyword) =>
-      query.toLowerCase().includes(keyword)
+      query.toLowerCase().includes(keyword),
     );
 
     if (isEndingConversation) {
       console.log(
-        "[API] User wants to end conversation, generating summary..."
+        "[API] User wants to end conversation, generating summary...",
       );
 
       // Fetch full conversation history from database
@@ -195,11 +193,11 @@ export async function POST(request: NextRequest) {
         });
       }
 
-      // Generate summary using LLM
+      // Generate summary using OpenAI
       const conversationText = fullChatHistory
         .map(
           (msg) =>
-            `${msg.role === "user" ? "Patient" : "Assistant"}: ${msg.content}`
+            `${msg.role === "user" ? "Patient" : "Assistant"}: ${msg.content}`,
         )
         .join("\n\n");
 
@@ -242,7 +240,7 @@ export async function POST(request: NextRequest) {
       };
 
       const chatHistoryResult = await chatHistoryCollection.insertOne(
-        summaryRecord as any
+        summaryRecord as any,
       );
 
       console.log(
@@ -252,7 +250,7 @@ export async function POST(request: NextRequest) {
           qaPairCount,
           summarySource,
           collection: "chat_history",
-        }
+        },
       );
 
       return NextResponse.json({
@@ -275,7 +273,7 @@ export async function POST(request: NextRequest) {
         role: msg.role || "user",
         content: msg.content || "",
         timestamp: msg.timestamp ? new Date(msg.timestamp) : new Date(),
-      })
+      }),
     );
 
     let qaPairCount = Math.floor(fullChatHistory.length / 2);
@@ -319,7 +317,7 @@ export async function POST(request: NextRequest) {
       } catch (dbError) {
         console.warn(
           "[API] Failed to fetch session history from database:",
-          dbError
+          dbError,
         );
       }
     }
@@ -336,7 +334,7 @@ export async function POST(request: NextRequest) {
 
     console.log(
       "[API] Initial state Q/A pair count:",
-      initialState.qaPairCount
+      initialState.qaPairCount,
     );
 
     console.log("[API] Executing LangGraph...");
@@ -390,7 +388,7 @@ export async function POST(request: NextRequest) {
     console.error("[API] Chat API error:", error);
     console.error(
       "[API] Error stack:",
-      error instanceof Error ? error.stack : "No stack trace"
+      error instanceof Error ? error.stack : "No stack trace",
     );
 
     return NextResponse.json(
@@ -398,7 +396,7 @@ export async function POST(request: NextRequest) {
         error: "Failed to process chat request",
         details: error instanceof Error ? error.message : "Unknown error",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

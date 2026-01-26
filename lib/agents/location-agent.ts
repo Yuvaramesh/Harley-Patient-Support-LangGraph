@@ -1,48 +1,30 @@
 // lib/agents/location-agent.ts
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { generateContent } from "@/lib/openai";
 import type { ChatState } from "../types";
 import { retryWithBackoff } from "../retry-utility";
 import {
   fetchNearbyClinics,
-  geocodeLocation,
-  getDirections,
   isGoogleMapsConfigured,
 } from "../google-maps-service";
-
-const genai = new GoogleGenerativeAI(process.env.NEXT_PUBLIC_GEMINI_API_KEY!);
-const model = genai.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
 
 /**
  * Remove markdown formatting from text
  */
 function cleanMarkdown(text: string): string {
-  return (
-    text
-      // Remove bold (**text** or __text__)
-      .replace(/(\*\*|__)(.*?)\1/g, "$2")
-      // Remove italic (*text* or _text_)
-      .replace(/([*_])(.*?)\1/g, "$2")
-      // Remove strikethrough (~~text~~)
-      .replace(/~~(.*?)~~/g, "$1")
-      // Remove inline code (`code`)
-      .replace(/`([^`]+)`/g, "$1")
-      // Remove headers (# ## ### etc)
-      .replace(/^#{1,6}\s+/gm, "")
-      // Remove horizontal rules (---, ___, ***)
-      .replace(/^[-*_]{3,}\s*$/gm, "")
-      // Remove blockquotes (> text)
-      .replace(/^>\s+/gm, "")
-      // Remove list markers (-, *, +, 1.)
-      .replace(/^[\s]*[-*+]\s+/gm, "")
-      .replace(/^[\s]*\d+\.\s+/gm, "")
-      // Remove links but keep text [text](url) -> text
-      .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
-      // Remove images ![alt](url)
-      .replace(/!\[([^\]]*)\]\([^)]+\)/g, "$1")
-      // Clean up multiple spaces
-      .replace(/\s+/g, " ")
-      .trim()
-  );
+  return text
+    .replace(/(\*\*|__)(.*?)\1/g, "$2")
+    .replace(/([*_])(.*?)\1/g, "$2")
+    .replace(/~~(.*?)~~/g, "$1")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/^#{1,6}\s+/gm, "")
+    .replace(/^[-*_]{3,}\s*$/gm, "")
+    .replace(/^>\s+/gm, "")
+    .replace(/^[\s]*[-*+]\s+/gm, "")
+    .replace(/^[\s]*\d+\.\s+/gm, "")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/!\[([^\]]*)\]\([^)]+\)/g, "$1")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 export async function locationAgent(state: ChatState): Promise<{
@@ -61,7 +43,7 @@ export async function locationAgent(state: ChatState): Promise<{
     };
   }
 
-  // Check if user is specifically looking for emergency rooms (NOT general emergency)
+  // Check if user is specifically looking for emergency rooms
   const isEmergencyRoomSearch =
     (query.includes("emergency room") ||
       query.includes("emergency rooms") ||
@@ -83,15 +65,14 @@ Examples:
 Respond with ONLY the location or "NONE":`;
 
   try {
-    const locationResponse = await retryWithBackoff(
+    const extractedLocation = await retryWithBackoff(
       async () => {
-        return await model.generateContent(extractLocationPrompt);
+        const text = await generateContent(extractLocationPrompt);
+        return text.trim();
       },
       2,
-      1000
+      1000,
     );
-
-    const extractedLocation = locationResponse.response.text().trim();
 
     // If no location found, ask user for location
     if (extractedLocation === "NONE" || !extractedLocation) {
@@ -102,14 +83,12 @@ Respond with ONLY the location or "NONE":`;
       };
     }
 
-    // Fetch nearby facilities based on search type
+    // Fetch nearby facilities
     let clinicInfo: string;
     try {
       if (isEmergencyRoomSearch) {
-        // Only emergency rooms with phone numbers
         clinicInfo = await fetchNearbyClinics(extractedLocation, 5000, true);
       } else {
-        // All medical facilities (hospitals, clinics, doctors, pharmacies)
         clinicInfo = await fetchNearbyClinics(extractedLocation, 5000, false);
       }
     } catch (error) {
@@ -120,10 +99,11 @@ Respond with ONLY the location or "NONE":`;
       };
     }
 
-    // Generate a concise introduction
+    // Generate introduction
     const facilityType = isEmergencyRoomSearch
       ? "emergency rooms with contact numbers"
       : "medical facilities including hospitals, clinics, and pharmacies";
+
     const responsePrompt = `You are a helpful healthcare location assistant. Write a brief, friendly introduction (2-3 sentences max) for the nearby ${facilityType} search.
 
 User Query: "${state.query}"
@@ -143,18 +123,16 @@ Create a SHORT introduction that:
 
 IMPORTANT: Write in plain text without any markdown formatting. Keep it very brief - just 2-3 sentences. Do not list the facilities, just introduce them.`;
 
-    const response = await retryWithBackoff(
+    const rawIntro = await retryWithBackoff(
       async () => {
-        return await model.generateContent(responsePrompt);
+        return await generateContent(responsePrompt);
       },
       3,
-      1000
+      1000,
     );
 
-    const rawIntro = response.response.text();
     const cleanIntro = cleanMarkdown(rawIntro);
 
-    // Different notes based on search type
     const closingNote = isEmergencyRoomSearch
       ? "\n\nIMPORTANT: Please call the emergency room numbers listed above before visiting to confirm availability and services. For life-threatening emergencies, call 911 or your local emergency number immediately."
       : "\n\nNote: This list includes hospitals, clinics, doctor offices, and pharmacies. Consider factors like ratings, distance, services offered, and whether the facility is currently open. For life-threatening emergencies, call 911 immediately.";

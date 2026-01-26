@@ -1,10 +1,7 @@
 // lib/agents/supervisor.ts
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { generateContent } from "@/lib/openai";
 import type { ChatState } from "../types";
 import { retryWithBackoff } from "../retry-utility";
-
-const genai = new GoogleGenerativeAI(process.env.NEXT_PUBLIC_GEMINI_API_KEY!);
-const model = genai.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
 
 export async function supervisorAgent(state: ChatState): Promise<string> {
   const prompt = `You are a medical triage supervisor agent. Analyze the patient's query and determine which agent should handle it.
@@ -31,19 +28,19 @@ Examples:
 - "Severe chest pain" -> emergency`;
 
   try {
-    const response = await retryWithBackoff(
+    const text = await retryWithBackoff(
       async () => {
-        return await model.generateContent(prompt);
+        return await generateContent(prompt);
       },
       3,
-      1000
+      1000,
     );
 
-    const text = response.response.text().toLowerCase().trim();
+    const cleanText = text.toLowerCase().trim();
 
     // Validate response
     const validAgents = ["clinical", "personal", "generic_faq", "emergency"];
-    return validAgents.includes(text) ? text : "clinical";
+    return validAgents.includes(cleanText) ? cleanText : "clinical";
   } catch (error) {
     console.error("Supervisor agent error after retries:", error);
 
@@ -80,7 +77,6 @@ Examples:
       return "generic_faq";
     }
 
-    // Default to clinical
     return "clinical";
   }
 }
@@ -93,23 +89,23 @@ Answer: "${state.answer}"
 Does the patient need to provide more information? Respond with "yes" or "no" only.`;
 
   try {
-    const response = await retryWithBackoff(
+    const text = await retryWithBackoff(
       async () => {
-        return await model.generateContent(prompt);
+        return await generateContent(prompt);
       },
       2,
-      1000
+      1000,
     );
 
-    return response.response.text().toLowerCase().includes("yes");
+    return text.toLowerCase().includes("yes");
   } catch (error) {
     console.error("Follow-up check error:", error);
-    return false; // Default to not asking follow-up if API fails
+    return false;
   }
 }
 
 export async function extractSeverity(
-  state: ChatState
+  state: ChatState,
 ): Promise<"low" | "medium" | "high" | "critical"> {
   const prompt = `Analyze the severity of the patient's medical condition based on their query and responses.
 
@@ -119,15 +115,15 @@ Medical Context: ${JSON.stringify(state.chat_history.slice(-5))}
 Respond with ONLY one: critical, high, medium, low`;
 
   try {
-    const response = await retryWithBackoff(
+    const text = await retryWithBackoff(
       async () => {
-        return await model.generateContent(prompt);
+        return await generateContent(prompt);
       },
       2,
-      1000
+      1000,
     );
 
-    const text = response.response.text().toLowerCase().trim();
+    const cleanText = text.toLowerCase().trim();
 
     // Validate and return proper type
     const validSeverities: Array<"low" | "medium" | "high" | "critical"> = [
@@ -137,8 +133,8 @@ Respond with ONLY one: critical, high, medium, low`;
       "low",
     ];
 
-    if (validSeverities.includes(text as any)) {
-      return text as "low" | "medium" | "high" | "critical";
+    if (validSeverities.includes(cleanText as any)) {
+      return cleanText as "low" | "medium" | "high" | "critical";
     }
 
     return "medium";

@@ -1,11 +1,8 @@
 // lib/agents/clinical-agent.ts
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { generateContent } from "@/lib/openai";
 import type { ChatState } from "../types";
 import { retryWithBackoff } from "../retry-utility";
 import { locationAgent } from "./location-agent";
-
-const genai = new GoogleGenerativeAI(process.env.NEXT_PUBLIC_GEMINI_API_KEY!);
-const model = genai.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
 
 /**
  * Remove markdown formatting from text
@@ -28,24 +25,9 @@ function cleanMarkdown(text: string): string {
 }
 
 /**
- * Check if enough information has been gathered
- * Removed auto-summary trigger - frontend handles checkpoint at 7 Q/A pairs
- * Backend should only create summary when explicitly requested via createAutoSummary
- */
-function hasEnoughInformation(qaPairCount: number): boolean {
-  console.log("[Clinical Agent] Q/A pair check:", {
-    qaPairCount,
-    readyForSummary: false, // Never auto-trigger, let frontend handle checkpoint
-  });
-
-  return false;
-}
-
-/**
  * Check if we've reached 7 Q/A pairs and should ask user to continue or end
  */
 function shouldShowCheckpoint(qaPairCount: number): boolean {
-  // This triggers BEFORE asking the next question
   const shouldShow = qaPairCount > 0 && qaPairCount % 7 === 0;
 
   console.log("[Clinical Agent] Checkpoint check:", {
@@ -60,7 +42,7 @@ function shouldShowCheckpoint(qaPairCount: number): boolean {
 function formatBufferMemory(chatHistory: any[], sessionId?: string): string {
   if (chatHistory.length === 0) return "No previous conversation history.";
 
-  const recentExchanges = chatHistory.slice(-10); // Keep last 5 exchanges
+  const recentExchanges = chatHistory.slice(-10);
   const memoryText = recentExchanges
     .map((msg, idx) => {
       const role = msg.role === "user" ? "Patient" : "Assistant";
@@ -92,15 +74,14 @@ export async function clinicalAgent(state: ChatState): Promise<{
     );
     return {
       answer:
-        "I have enough information from our conversation so far. Would you like to continue providing additional information, or would you like me to create a summary and send it to your doctor? type end conversation",
+        "I have enough information from our conversation so far. Would you like to continue providing additional information, or would you like me to create a summary and send it to your doctor?",
       severity: "medium",
       needsSummary: false,
       isSummaryResponse: false,
-      isCheckpoint: true, // This tells frontend to show the checkpoint dialog
+      isCheckpoint: true,
     };
   }
 
-  // Ask next dynamic question based on conversation context
   const questionPrompt = `You are a clinical healthcare assistant gathering information from a patient.
 
 ${formatBufferMemory(state.chat_history, state.sessionId)}
@@ -128,15 +109,14 @@ FOLLOW_UP: CONTINUE
 SEVERITY: [low/medium/high/critical based on description so far]`;
 
   try {
-    const response = await retryWithBackoff(
+    const text = await retryWithBackoff(
       async () => {
-        return await model.generateContent(questionPrompt);
+        return await generateContent(questionPrompt);
       },
       3,
       1000,
     );
 
-    const text = response.response.text();
     const responseMatch = text.match(/RESPONSE:\s*([\s\S]*?)(?=FOLLOW_UP:|$)/);
     const severityMatch = text.match(/SEVERITY:\s*(\w+)/);
 

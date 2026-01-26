@@ -1,10 +1,7 @@
 // app/api/profile-checklist/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { generateJSONContent } from "@/lib/openai";
 import { getCollection } from "@/lib/mongodb";
-
-const genai = new GoogleGenerativeAI(process.env.NEXT_PUBLIC_GEMINI_API_KEY!);
-const model = genai.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
 
 interface ProfileData {
   patient_id?: number;
@@ -36,7 +33,7 @@ interface ProfileData {
 
 async function fetchPatientProfile(
   patientId: string,
-  patientEmail?: string
+  patientEmail?: string,
 ): Promise<ProfileData | null> {
   try {
     const profileCollection = await getCollection("profile");
@@ -155,13 +152,13 @@ export async function POST(request: NextRequest) {
     if (!summary || !patientId) {
       return NextResponse.json(
         { error: "Summary and patientId are required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
     console.log(
       "[Profile Checklist API] Fetching profile for patient:",
-      patientId
+      patientId,
     );
 
     const profile = await fetchPatientProfile(patientId, patientEmail);
@@ -247,12 +244,7 @@ IMPORTANT:
 - Include all critical health information from profile
 - Note any concerning changes or missing data`;
 
-    const response = await model.generateContent(prompt);
-    let responseText = response.response.text().trim();
-    responseText = responseText
-      .replace(/```json\n?/g, "")
-      .replace(/```\n?/g, "");
-
+    const responseText = await generateJSONContent(prompt);
     const parsedResponse = JSON.parse(responseText);
 
     if (!parsedResponse.items || !Array.isArray(parsedResponse.items)) {
@@ -270,7 +262,7 @@ IMPORTANT:
         profileValue: item.profileValue,
         summaryValue: item.summaryValue,
         notes: item.notes,
-      })
+      }),
     );
 
     // Add metadata items
@@ -288,7 +280,7 @@ IMPORTANT:
       checklistItems.push({
         id: `meta-critical-${Date.now()}`,
         label: `Critical missing data: ${parsedResponse.criticalMissing.join(
-          ", "
+          ", ",
         )}`,
         status: "missing",
         checked: false,
@@ -301,7 +293,7 @@ IMPORTANT:
     console.log(
       "[Profile Checklist API] Generated",
       checklistItems.length,
-      "items"
+      "items",
     );
 
     return NextResponse.json({
@@ -317,7 +309,7 @@ IMPORTANT:
     console.error("[Profile Checklist API] Error:", error);
     return NextResponse.json(
       { error: "Failed to generate checklist", details: String(error) },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

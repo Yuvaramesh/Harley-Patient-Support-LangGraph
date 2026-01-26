@@ -1,10 +1,7 @@
 // lib/agents/faq-agent.ts
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { generateContent } from "@/lib/openai";
 import type { ChatState } from "../types";
 import { retryWithBackoff } from "../retry-utility";
-
-const genai = new GoogleGenerativeAI(process.env.NEXT_PUBLIC_GEMINI_API_KEY!);
-const model = genai.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
 
 /**
  * Remove markdown formatting from text
@@ -53,14 +50,14 @@ export async function faqAgent(state: ChatState): Promise<string> {
   // Check local FAQ database first
   const query = state.query.toLowerCase();
   const faqMatch = FAQ_DATABASE.find((faq) =>
-    faq.keywords.some((keyword) => query.includes(keyword))
+    faq.keywords.some((keyword) => query.includes(keyword)),
   );
 
   if (faqMatch) {
     return faqMatch.answer;
   }
 
-  // Use Gemini for general knowledge questions with retry
+  // Use OpenAI for general knowledge questions with retry
   const prompt = `You are a helpful health information assistant. Answer this general health question clearly and concisely.
 
 Query: "${state.query}"
@@ -75,15 +72,14 @@ Important guidelines:
 Keep the response professional, clear, and easy to read.`;
 
   try {
-    const response = await retryWithBackoff(
+    const rawAnswer = await retryWithBackoff(
       async () => {
-        return await model.generateContent(prompt);
+        return await generateContent(prompt);
       },
       3,
-      1000
+      1000,
     );
 
-    const rawAnswer = response.response.text();
     const cleanAnswer = cleanMarkdown(rawAnswer);
 
     return cleanAnswer;
