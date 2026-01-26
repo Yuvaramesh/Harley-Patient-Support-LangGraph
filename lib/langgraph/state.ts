@@ -1,4 +1,6 @@
 // lib/langgraph/state.ts
+// UPDATED: Removed emergency-specific fields for standardized response format
+
 import { Annotation } from "@langchain/langgraph";
 import type { ChatMessage } from "../types";
 
@@ -30,30 +32,13 @@ export const HealthcareGraphState = Annotation.Root({
     reducer: (current, update) => update ?? current,
   }),
 
-  // Response data
+  // Response data - SINGLE answer field for ALL agents (including emergency)
   answer: Annotation<string | undefined>({
     reducer: (current, update) => update ?? current,
   }),
 
   // Clinical-specific fields
   followUpQuestions: Annotation<string[] | undefined>({
-    reducer: (current, update) => update ?? current,
-  }),
-
-  // Emergency-specific fields
-  emergencyMessage: Annotation<string | undefined>({
-    reducer: (current, update) => update ?? current,
-  }),
-  emergencyNumber: Annotation<string | undefined>({
-    reducer: (current, update) => update ?? current,
-  }),
-  nearbyClinicLocations: Annotation<string[] | undefined>({
-    reducer: (current, update) => update ?? current,
-  }),
-  needsLocation: Annotation<boolean | undefined>({
-    reducer: (current, update) => update ?? current,
-  }),
-  clinicInfo: Annotation<string | undefined>({
     reducer: (current, update) => update ?? current,
   }),
 
@@ -117,7 +102,7 @@ export const HealthcareGraphState = Annotation.Root({
   }),
   isCheckpoint: Annotation<boolean | undefined>({
     reducer: (current, update) => update ?? current,
-  }), //adding isCheckpoint to state
+  }),
 });
 
 export type HealthcareGraphStateType = typeof HealthcareGraphState.State;

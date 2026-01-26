@@ -1,4 +1,6 @@
 // lib/agents/clinical-agent.ts
+// COMPLETE FILE WITH EMERGENCY PROTOCOL UPDATED TO STANDARDIZED FORMAT
+
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import type { ChatState } from "../types";
 import { retryWithBackoff } from "../retry-utility";
@@ -29,13 +31,11 @@ function cleanMarkdown(text: string): string {
 
 /**
  * Check if enough information has been gathered
- * Removed auto-summary trigger - frontend handles checkpoint at 7 Q/A pairs
- * Backend should only create summary when explicitly requested via createAutoSummary
  */
 function hasEnoughInformation(qaPairCount: number): boolean {
   console.log("[Clinical Agent] Q/A pair check:", {
     qaPairCount,
-    readyForSummary: false, // Never auto-trigger, let frontend handle checkpoint
+    readyForSummary: false,
   });
 
   return false;
@@ -45,7 +45,6 @@ function hasEnoughInformation(qaPairCount: number): boolean {
  * Check if we've reached 7 Q/A pairs and should ask user to continue or end
  */
 function shouldShowCheckpoint(qaPairCount: number): boolean {
-  // This triggers BEFORE asking the next question
   const shouldShow = qaPairCount > 0 && qaPairCount % 7 === 0;
 
   console.log("[Clinical Agent] Checkpoint check:", {
@@ -60,7 +59,7 @@ function shouldShowCheckpoint(qaPairCount: number): boolean {
 function formatBufferMemory(chatHistory: any[], sessionId?: string): string {
   if (chatHistory.length === 0) return "No previous conversation history.";
 
-  const recentExchanges = chatHistory.slice(-10); // Keep last 5 exchanges
+  const recentExchanges = chatHistory.slice(-10);
   const memoryText = recentExchanges
     .map((msg, idx) => {
       const role = msg.role === "user" ? "Patient" : "Assistant";
@@ -92,15 +91,14 @@ export async function clinicalAgent(state: ChatState): Promise<{
     );
     return {
       answer:
-        "I have enough information from our conversation so far. Would you like to continue providing additional information, or would you like me to create a summary and send it to your doctor? type end conversation",
+        "I have enough information from our conversation so far. Would you like to continue providing additional information, or would you like me to create a summary and send it to your doctor?",
       severity: "medium",
       needsSummary: false,
       isSummaryResponse: false,
-      isCheckpoint: true, // This tells frontend to show the checkpoint dialog
+      isCheckpoint: true,
     };
   }
 
-  // Ask next dynamic question based on conversation context
   const questionPrompt = `You are a clinical healthcare assistant gathering information from a patient.
 
 ${formatBufferMemory(state.chat_history, state.sessionId)}
@@ -177,12 +175,12 @@ SEVERITY: [low/medium/high/critical based on description so far]`;
   }
 }
 
+/**
+ * UPDATED: Emergency Protocol returns standardized format with answer and severity only
+ */
 export async function emergencyProtocol(state: ChatState): Promise<{
-  message: string;
-  emergencyNumber: string;
-  nearbyClinicLocations: string[];
-  needsLocation?: boolean;
-  clinicInfo?: string;
+  answer: string;
+  severity: "critical";
 }> {
   console.log("[Emergency Protocol] Executing emergency protocol");
 
@@ -200,18 +198,20 @@ export async function emergencyProtocol(state: ChatState): Promise<{
     conversationText.includes("city") ||
     /\d+\.\d+,\s*-?\d+\.\d+/.test(conversationText);
 
+  let emergencyMessage = "";
+
   if (hasLocationKeywords) {
     try {
       console.log("[Emergency Protocol] Location detected, fetching clinics");
       const locationResult = await locationAgent(state);
 
       if (locationResult.clinicLocations && !locationResult.needsLocation) {
+        // Format location info into the answer string
+        emergencyMessage = `⚠️ EMERGENCY DETECTED\n\n${locationResult.answer}\n\nPlease call emergency services (911) immediately if this is life-threatening. Can we end the session now?`;
+
         return {
-          message: `EMERGENCY DETECTED\n\n${locationResult.answer}\n\nPlease call emergency services (911) immediately if this is life-threatening. Can we end the session now?`,
-          emergencyNumber: "911",
-          nearbyClinicLocations: locationResult.clinicLocations.split("\n"),
-          needsLocation: false,
-          clinicInfo: locationResult.clinicLocations,
+          answer: emergencyMessage,
+          severity: "critical",
         };
       }
     } catch (error) {
@@ -219,11 +219,12 @@ export async function emergencyProtocol(state: ChatState): Promise<{
     }
   }
 
+  // Default emergency message without location
+  emergencyMessage =
+    "⚠️ EMERGENCY DETECTED\n\nThis appears to be a medical emergency. Please:\n\n1. Call 911 or your local emergency number IMMEDIATELY\n2. If safe, provide your location so I can find nearby emergency facilities\n\nTo help you find nearby emergency services, please provide:\n• Your city/area (e.g., 'New York, NY')\n• Or say 'find emergency rooms near [your location]'\n\nI need to share your profile to your doctor. Can we end the session now? or proceed with your location details?";
+
   return {
-    message:
-      "EMERGENCY DETECTED\n\nThis appears to be a medical emergency. Please:\n\n1. Call 911 or your local emergency number IMMEDIATELY\n2. If safe, provide your location so I can find nearby emergency facilities\n\nTo help you find nearby emergency services, please provide:\n• Your city/area (e.g., 'New York, NY')\n• Or say 'find emergency rooms near [your location]'\n\nI need to share your profile to your doctor. Can we end the session now? or proceed with your location details?",
-    emergencyNumber: "911",
-    nearbyClinicLocations: [],
-    needsLocation: true,
+    answer: emergencyMessage,
+    severity: "critical",
   };
 }
