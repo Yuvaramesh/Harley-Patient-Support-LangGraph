@@ -88,11 +88,11 @@ export async function clinicalAgent(state: ChatState): Promise<{
     console.log(
       "[Clinical Agent] Reached checkpoint at",
       state.qaPairCount,
-      "Q/A pairs"
+      "Q/A pairs",
     );
     return {
       answer:
-        "I have enough information from our conversation so far. Would you like to continue providing additional information, or would you like me to create a summary and send it to your doctor?",
+        "I have enough information from our conversation so far. Would you like to continue providing additional information, or would you like me to create a summary and send it to your doctor? type end conversation",
       severity: "medium",
       needsSummary: false,
       isSummaryResponse: false,
@@ -133,7 +133,7 @@ SEVERITY: [low/medium/high/critical based on description so far]`;
         return await model.generateContent(questionPrompt);
       },
       3,
-      1000
+      1000,
     );
 
     const text = response.response.text();
