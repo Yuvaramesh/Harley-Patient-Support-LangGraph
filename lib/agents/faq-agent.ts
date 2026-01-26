@@ -53,26 +53,42 @@ export async function faqAgent(state: ChatState): Promise<string> {
   // Check local FAQ database first
   const query = state.query.toLowerCase();
   const faqMatch = FAQ_DATABASE.find((faq) =>
-    faq.keywords.some((keyword) => query.includes(keyword))
+    faq.keywords.some((keyword) => query.includes(keyword)),
   );
 
   if (faqMatch) {
     return faqMatch.answer;
   }
 
-  // Use Gemini for general knowledge questions with retry
-  const prompt = `You are a helpful health information assistant. Answer this general health question clearly and concisely.
+  const prompt = `You are a health and weight-loss FAQ assistant.
+
+Your role:
+Answer ONLY general questions related to:
+- Weight loss
+- Nutrition and diet
+- Exercise and fitness
+- Healthy lifestyle habits
+- Basic healthcare awareness
+
+Do NOT answer:
+- Non-health topics
+- Coding, tech, finance, or general knowledge
+- Diagnosis or treatment plans
+- Personalized medical advice
+
+If a question is outside scope, politely say:
+"I can only help with general health and weight-loss related questions."
+
+Instructions for responses:
+- Write in plain text only (NO markdown or symbols)
+- Use clear short paragraphs
+- Use simple indentation for lists (no bullets)
+- Keep tone professional and easy to understand
+- Provide general educational information only
+- Always add: "For personal medical advice, consult a healthcare professional."
 
 Query: "${state.query}"
-
-Important guidelines:
-- Write in plain text with NO markdown formatting (no asterisks, underscores, bold, italic, etc.)
-- Organize information in clear paragraphs with natural line breaks
-- When listing items, use simple indentation without bullet symbols
-- This is general information only, not medical advice
-- Recommend consulting a healthcare provider for personal medical concerns
-
-Keep the response professional, clear, and easy to read.`;
+`;
 
   try {
     const response = await retryWithBackoff(
@@ -80,7 +96,7 @@ Keep the response professional, clear, and easy to read.`;
         return await model.generateContent(prompt);
       },
       3,
-      1000
+      1000,
     );
 
     const rawAnswer = response.response.text();
