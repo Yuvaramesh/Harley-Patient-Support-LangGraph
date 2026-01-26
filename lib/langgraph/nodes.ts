@@ -19,7 +19,7 @@ import { ObjectId } from "mongodb";
  * Node 1: Supervisor routes the query to appropriate agent
  */
 export async function supervisorNode(
-  state: HealthcareGraphStateType
+  state: HealthcareGraphStateType,
 ): Promise<Partial<HealthcareGraphStateType>> {
   console.log("[Graph] Executing supervisor node");
 
@@ -41,7 +41,7 @@ export async function supervisorNode(
  * Node 2: Extract severity level
  */
 export async function severityNode(
-  state: HealthcareGraphStateType
+  state: HealthcareGraphStateType,
 ): Promise<Partial<HealthcareGraphStateType>> {
   console.log("[Graph] Executing severity extraction node");
 
@@ -62,7 +62,7 @@ export async function severityNode(
  * Node 3: Clinical Agent
  */
 export async function clinicalNode(
-  state: HealthcareGraphStateType
+  state: HealthcareGraphStateType,
 ): Promise<Partial<HealthcareGraphStateType>> {
   console.log("[Graph] Executing clinical agent node");
 
@@ -88,7 +88,7 @@ export async function clinicalNode(
  * Node 4: Emergency Protocol
  */
 export async function emergencyNode(
-  state: HealthcareGraphStateType
+  state: HealthcareGraphStateType,
 ): Promise<Partial<HealthcareGraphStateType>> {
   console.log("[Graph] Executing emergency protocol node");
 
@@ -99,14 +99,9 @@ export async function emergencyNode(
   });
 
   return {
-    answer: emergency.message,
-    emergencyMessage: emergency.message,
-    emergencyNumber: emergency.emergencyNumber,
-    nearbyClinicLocations: emergency.nearbyClinicLocations,
-    needsLocation: emergency.needsLocation,
-    clinicInfo: emergency.clinicInfo,
-    severity: "critical",
-    communicationType: "emergency", // Set communication type to emergency
+    answer: emergency.answer,
+    severity: emergency.severity,
+    communicationType: "emergency",
   };
 }
 
@@ -114,7 +109,7 @@ export async function emergencyNode(
  * Node 5: Personal Agent
  */
 export async function personalNode(
-  state: HealthcareGraphStateType
+  state: HealthcareGraphStateType,
 ): Promise<Partial<HealthcareGraphStateType>> {
   console.log("[Graph] Executing personal agent node");
 
@@ -144,7 +139,7 @@ export async function personalNode(
  * Node 6: FAQ Agent
  */
 export async function faqNode(
-  state: HealthcareGraphStateType
+  state: HealthcareGraphStateType,
 ): Promise<Partial<HealthcareGraphStateType>> {
   console.log("[Graph] Executing FAQ agent node");
 
@@ -164,14 +159,13 @@ export async function faqNode(
  * Node 7: Save to Database
  */
 export async function saveToDatabaseNode(
-  state: HealthcareGraphStateType
+  state: HealthcareGraphStateType,
 ): Promise<Partial<HealthcareGraphStateType>> {
   console.log("[Graph] Executing save to database node");
 
   try {
-    const commsCollection = await getCollection<Communication>(
-      "communications"
-    );
+    const commsCollection =
+      await getCollection<Communication>("communications");
 
     let communicationType: "clinical" | "faq" | "personal" | "emergency" =
       "clinical";
@@ -211,7 +205,7 @@ export async function saveToDatabaseNode(
         type: communicationType,
         collection: "communications",
         NOT_saved_to: "clinical_notes",
-      }
+      },
     );
 
     return {
@@ -227,7 +221,7 @@ export async function saveToDatabaseNode(
  * Node 8: Send Email Notifications
  */
 export async function emailNotificationNode(
-  state: HealthcareGraphStateType
+  state: HealthcareGraphStateType,
 ): Promise<Partial<HealthcareGraphStateType>> {
   console.log("[Graph] Executing email notification node");
 
@@ -242,7 +236,7 @@ export async function emailNotificationNode(
         const summary = state.chat_history
           .map(
             (msg) =>
-              `${msg.role === "user" ? "Patient" : "Assistant"}: ${msg.content}`
+              `${msg.role === "user" ? "Patient" : "Assistant"}: ${msg.content}`,
           )
           .join("\n\n");
 
@@ -251,7 +245,7 @@ export async function emailNotificationNode(
           patientData?.name || state.patientId,
           patientData?.contact || "N/A",
           state.emergencyMessage || "Emergency situation detected",
-          summary
+          summary,
         );
 
         console.log("[Graph] Emergency alert sent to doctor only");
@@ -278,12 +272,11 @@ export async function emailNotificationNode(
 
       // Update database
       if (state.communicationId) {
-        const commsCollection = await getCollection<Communication>(
-          "communications"
-        );
+        const commsCollection =
+          await getCollection<Communication>("communications");
         await commsCollection.updateOne(
           { _id: new ObjectId(state.communicationId) },
-          { $set: { emailSent: true } }
+          { $set: { emailSent: true } },
         );
       }
 
@@ -302,7 +295,7 @@ export async function emailNotificationNode(
  * Node 9: Update Chat History
  */
 export async function updateHistoryNode(
-  state: HealthcareGraphStateType
+  state: HealthcareGraphStateType,
 ): Promise<Partial<HealthcareGraphStateType>> {
   console.log("[Graph] Executing update history node");
 
