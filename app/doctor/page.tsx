@@ -1,9 +1,12 @@
 // app/doctor/page.tsx
 "use client";
 
+import React from "react";
+
 import { useState } from "react";
+import Link from "next/link";
 import { DoctorDashboard } from "@/components/doctor-dashboard";
-import { Stethoscope, LogOut } from "lucide-react";
+import { Stethoscope, LogOut, ShieldCheck } from "lucide-react";
 
 export default function DoctorPortal() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -131,13 +134,22 @@ export default function DoctorPortal() {
                 <p className="text-sm text-gray-600">{doctorEmail}</p>
               </div>
             </div>
-            <button
-              onClick={handleLogout}
-              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition"
-            >
-              <LogOut className="h-4 w-4" />
-              Logout
-            </button>
+            <div className="flex items-center gap-2">
+              <Link
+                href="/audit"
+                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-teal-700 bg-teal-50 hover:bg-teal-100 rounded-lg transition border border-teal-200"
+              >
+                <ShieldCheck className="h-4 w-4" />
+                Audit
+              </Link>
+              <button
+                onClick={handleLogout}
+                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition"
+              >
+                <LogOut className="h-4 w-4" />
+                Logout
+              </button>
+            </div>
           </div>
         </div>
       </header>

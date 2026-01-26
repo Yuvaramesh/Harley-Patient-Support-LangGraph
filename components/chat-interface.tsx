@@ -18,9 +18,6 @@ interface Message {
   content: string;
   timestamp: Date;
   agentType?: string;
-  emergencyNumber?: string;
-  nearbyClinicLocations?: string[];
-  needsLocation?: boolean;
   severity?: string;
 }
 
@@ -75,7 +72,7 @@ export function ChatInterface({ patientId, email }: ChatInterfaceProps) {
           setMessages(messagesWithDates);
           setShowWelcome(messagesWithDates.length === 0);
           const userMessages = messagesWithDates.filter(
-            (m: Message) => m.role === "user"
+            (m: Message) => m.role === "user",
           ).length;
           setQaPairCount(userMessages);
         }
@@ -137,7 +134,7 @@ export function ChatInterface({ patientId, email }: ChatInterfaceProps) {
       content: string;
       timestamp: string;
     }>,
-    agentType: string
+    agentType: string,
   ) => {
     try {
       console.log("[v0] ===== CREATING SUMMARY =====");
@@ -172,7 +169,7 @@ export function ChatInterface({ patientId, email }: ChatInterfaceProps) {
       };
 
       console.log(
-        "[v0] Sending POST request to /api/communications/summary..."
+        "[v0] Sending POST request to /api/communications/summary...",
       );
       console.log("[v0] Request body:", JSON.stringify(requestBody, null, 2));
 
@@ -185,20 +182,20 @@ export function ChatInterface({ patientId, email }: ChatInterfaceProps) {
       console.log(
         "[v0] Response status:",
         response.status,
-        response.statusText
+        response.statusText,
       );
 
       if (response.ok) {
         const data = await response.json();
         console.log(
-          "[v0] ✓ Summary created and stored in chat_history successfully!"
+          "[v0] ✓ Summary created and stored in chat_history successfully!",
         );
         console.log("[v0] Response data:", data);
       } else {
         const errorText = await response.text();
         console.error(
           "[v0] ✗ Failed to create summary - Status:",
-          response.status
+          response.status,
         );
         console.error("[v0] Error response:", errorText);
       }
@@ -219,7 +216,7 @@ export function ChatInterface({ patientId, email }: ChatInterfaceProps) {
     setShowCheckpoint(false);
 
     const allSessionMessages = messages.filter(
-      (msg) => msg.role === "user" || msg.role === "assistant"
+      (msg) => msg.role === "user" || msg.role === "assistant",
     );
 
     console.log("[v0] Filtered session messages:", allSessionMessages.length);
@@ -245,12 +242,12 @@ export function ChatInterface({ patientId, email }: ChatInterfaceProps) {
     console.log(
       "[v0] Prepared",
       messagesToSummarize.length,
-      "messages for summary"
+      "messages for summary",
     );
     console.log("[v0] First message:", messagesToSummarize[0]);
     console.log(
       "[v0] Last message:",
-      messagesToSummarize[messagesToSummarize.length - 1]
+      messagesToSummarize[messagesToSummarize.length - 1],
     );
 
     const summaryMessage: Message = {
@@ -319,12 +316,12 @@ export function ChatInterface({ patientId, email }: ChatInterfaceProps) {
     const isEndingConversation = endConversationKeywords.some(
       (keyword) =>
         currentInput.toLowerCase().trim() === keyword ||
-        currentInput.toLowerCase().includes(keyword)
+        currentInput.toLowerCase().includes(keyword),
     );
 
     if (isEndingConversation && messages.length > 0) {
       console.log(
-        "[v0] User typed end conversation keyword, creating summary and storing in chat_history..."
+        "[v0] User typed end conversation keyword, creating summary and storing in chat_history...",
       );
       setInput("");
 
@@ -395,7 +392,7 @@ export function ChatInterface({ patientId, email }: ChatInterfaceProps) {
 
       if (data.shouldEndConversation) {
         console.log(
-          "[v0] Backend detected end conversation, triggering summary..."
+          "[v0] Backend detected end conversation, triggering summary...",
         );
         setMessages([
           ...newMessages,
@@ -417,7 +414,7 @@ export function ChatInterface({ patientId, email }: ChatInterfaceProps) {
         console.log(
           "[v0] Backend triggered checkpoint at",
           newQAPairCount,
-          "Q/A pairs"
+          "Q/A pairs",
         );
         // Update the Q/A count since this exchange is complete
         setQaPairCount(newQAPairCount);
@@ -429,40 +426,30 @@ export function ChatInterface({ patientId, email }: ChatInterfaceProps) {
         return;
       }
 
-      if (data.agentType === "emergency") {
-        const content =
-          data.response.message || data.response.answer || "Emergency response";
-        assistantMessage = {
-          role: "assistant",
-          content,
-          timestamp: new Date(),
-          agentType: "emergency",
-          emergencyNumber: data.response.emergencyNumber,
-          nearbyClinicLocations: data.response.nearbyClinicLocations,
-          needsLocation: data.response.needsLocation,
-        };
-      } else {
-        const content =
-          data.response?.answer ||
-          data.response?.message ||
-          "No response available";
-        assistantMessage = {
-          role: "assistant",
-          content,
-          timestamp: new Date(),
-          agentType: data.agentType,
-          severity: data.severity,
-        };
-      }
+      // Unified response handling for all agent types
+      const content =
+        data.response?.answer ||
+        data.response?.message ||
+        "No response available";
+
+      assistantMessage = {
+        role: "assistant",
+        content,
+        timestamp: new Date(),
+        agentType: data.agentType,
+        severity: data.severity,
+      };
 
       if (assistantMessage) {
         const finalMessages = [...newMessages, assistantMessage];
         setMessages(finalMessages);
 
-        if (data.agentType === "clinical") {
+        // Update Q/A pair count for clinical and emergency agents
+        if (data.agentType === "clinical" || data.agentType === "emergency") {
           setQaPairCount(newQAPairCount);
 
           console.log("[v0] Q/A pair count updated:", {
+            agentType: data.agentType,
             previousCount: qaPairCount,
             newCount: newQAPairCount,
             conversationLoop,
@@ -474,7 +461,7 @@ export function ChatInterface({ patientId, email }: ChatInterfaceProps) {
     } catch (error) {
       console.error("Chat error:", error);
       setError(
-        error instanceof Error ? error.message : "Failed to send message"
+        error instanceof Error ? error.message : "Failed to send message",
       );
       setLoading(false);
     }

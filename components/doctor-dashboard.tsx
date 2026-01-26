@@ -2,6 +2,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import {
   Search,
   Filter,
@@ -10,6 +11,7 @@ import {
   AlertCircle,
   User,
   Phone,
+  ShieldCheck,
 } from "lucide-react";
 import { ProfileChecklistDisplay } from "@/components/profile-checklist-display";
 
@@ -43,14 +45,14 @@ export function DoctorDashboard({ doctorEmail }: DoctorDashboardProps) {
   const [communications, setCommunications] = useState<Communication[]>([]);
   const [filteredComms, setFilteredComms] = useState<Communication[]>([]);
   const [patientInfo, setPatientInfo] = useState<Map<string, PatientInfo>>(
-    new Map()
+    new Map(),
   );
   const [loading, setLoading] = useState(true);
   const [emailFilter, setEmailFilter] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
   const [severityFilter, setSeverityFilter] = useState("all");
   const [expandedSummaries, setExpandedSummaries] = useState<Set<string>>(
-    new Set()
+    new Set(),
   );
 
   useEffect(() => {
@@ -72,7 +74,7 @@ export function DoctorDashboard({ doctorEmail }: DoctorDashboardProps) {
         {
           count: data.communications?.length || 0,
           source: "chat_history collection only",
-        }
+        },
       );
 
       if (data.success) {
@@ -84,13 +86,13 @@ export function DoctorDashboard({ doctorEmail }: DoctorDashboardProps) {
             try {
               const patResponse = await fetch(
                 `/api/patient/profile?email=${encodeURIComponent(
-                  comm.patientEmail
-                )}`
+                  comm.patientEmail,
+                )}`,
               );
               if (patResponse.ok) {
                 const patData = await patResponse.json();
                 setPatientInfo((prev) =>
-                  new Map(prev).set(comm.patientId, patData.data)
+                  new Map(prev).set(comm.patientId, patData.data),
                 );
               }
             } catch (error) {
@@ -115,7 +117,7 @@ export function DoctorDashboard({ doctorEmail }: DoctorDashboardProps) {
           comm.patientId
             .toLowerCase()
             .includes(emailFilter.toLowerCase().replace(/[^a-zA-Z0-9]/g, "")) ||
-          comm.patientEmail?.toLowerCase().includes(emailFilter.toLowerCase())
+          comm.patientEmail?.toLowerCase().includes(emailFilter.toLowerCase()),
       );
     }
 
@@ -252,6 +254,26 @@ export function DoctorDashboard({ doctorEmail }: DoctorDashboardProps) {
 
   return (
     <div className="space-y-6 p-6 bg-gray-50 min-h-screen">
+      {/* Audit Banner */}
+      <Link href="/audit">
+        <div className="bg-gradient-to-r from-teal-600 to-teal-700 text-white rounded-lg shadow p-6 hover:shadow-lg transition cursor-pointer">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <ShieldCheck className="w-8 h-8" />
+              <div>
+                <h3 className="text-lg font-semibold">Patient Support Audit</h3>
+                <p className="text-sm text-teal-100 mt-1">
+                  Run compliance assessments and review audit results
+                </p>
+              </div>
+            </div>
+            <div className="text-sm bg-white bg-opacity-20 px-4 py-2 rounded-lg font-medium">
+              Access Audit →
+            </div>
+          </div>
+        </div>
+      </Link>
+
       {/* Header Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="bg-white rounded-lg shadow p-6">
@@ -285,7 +307,7 @@ export function DoctorDashboard({ doctorEmail }: DoctorDashboardProps) {
               <p className="text-2xl font-bold text-red-600">
                 {
                   communications.filter(
-                    (c) => c.severity === "high" || c.severity === "critical"
+                    (c) => c.severity === "high" || c.severity === "critical",
                   ).length
                 }
               </p>
@@ -401,7 +423,7 @@ export function DoctorDashboard({ doctorEmail }: DoctorDashboardProps) {
                     <div className="flex items-center gap-3">
                       <span
                         className={`px-3 py-1 rounded-full text-xs font-semibold ${getTypeColor(
-                          comm.type
+                          comm.type,
                         )}`}
                       >
                         {comm.type === "emergency" ? "🚨 " : ""}
@@ -410,7 +432,7 @@ export function DoctorDashboard({ doctorEmail }: DoctorDashboardProps) {
                       {comm.severity && (
                         <span
                           className={`px-3 py-1 rounded-full text-xs font-semibold border ${getSeverityColor(
-                            comm.severity
+                            comm.severity,
                           )}`}
                         >
                           {comm.severity.toUpperCase()}
@@ -420,7 +442,7 @@ export function DoctorDashboard({ doctorEmail }: DoctorDashboardProps) {
                     <div className="flex items-center gap-2 text-sm text-gray-500">
                       <Calendar className="h-4 w-4" />
                       {new Date(
-                        comm.timestamp || comm.createdAt
+                        comm.timestamp || comm.createdAt,
                       ).toLocaleString()}
                     </div>
                   </div>
@@ -517,8 +539,8 @@ export function DoctorDashboard({ doctorEmail }: DoctorDashboardProps) {
                         comm.status === "completed"
                           ? "bg-green-100 text-green-800"
                           : comm.status === "in_progress"
-                          ? "bg-yellow-100 text-yellow-800"
-                          : "bg-gray-100 text-gray-800"
+                            ? "bg-yellow-100 text-yellow-800"
+                            : "bg-gray-100 text-gray-800"
                       }`}
                     >
                       Status: {comm.status.replace(/_/g, " ").toUpperCase()}
