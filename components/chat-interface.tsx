@@ -11,6 +11,7 @@ import {
   CheckCircle,
   AlertCircle,
   LogOut,
+  Clock,
 } from "lucide-react";
 
 interface Message {
@@ -31,6 +32,10 @@ interface ChatInterfaceProps {
   contact?: string;
 }
 
+const INACTIVITY_TIMEOUT = 20000; // 20 seconds
+const INITIAL_CHECKPOINT = 6; // First checkpoint at 6 Q&A pairs
+const EXTENDED_CHECKPOINT = 3; // Extended checkpoint at 3 more Q&A pairs
+
 export function ChatInterface({ patientId, email }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -49,9 +54,54 @@ export function ChatInterface({ patientId, email }: ChatInterfaceProps) {
   const [error, setError] = useState<string | null>(null);
   const [showThankYou, setShowThankYou] = useState(false);
   const [conversationEnded, setConversationEnded] = useState(false);
+  const [showInactivityPrompt, setShowInactivityPrompt] = useState(false);
+  const [inactivityTimer, setInactivityTimer] = useState<NodeJS.Timeout | null>(
+    null,
+  );
+  const [checkpointType, setCheckpointType] = useState<
+    "regular" | "extended" | "inactivity"
+  >("regular");
 
   const storageKey = `chat_messages_${patientId}`;
   const sessionStorageKey = `session_id_${patientId}`;
+
+  // Reset inactivity timer
+  const resetInactivityTimer = () => {
+    if (inactivityTimer) {
+      clearTimeout(inactivityTimer);
+    }
+
+    // Don't set timer if conversation ended or checkpoint is showing
+    if (conversationEnded || showCheckpoint || showInactivityPrompt) {
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      if (messages.length > 0 && !conversationEnded && !showCheckpoint) {
+        console.log("[Chat] Inactivity detected - showing end session prompt");
+        setCheckpointType("inactivity");
+        setShowInactivityPrompt(true);
+      }
+    }, INACTIVITY_TIMEOUT);
+
+    setInactivityTimer(timer);
+  };
+
+  // Cleanup timer on unmount
+  useEffect(() => {
+    return () => {
+      if (inactivityTimer) {
+        clearTimeout(inactivityTimer);
+      }
+    };
+  }, [inactivityTimer]);
+
+  // Reset timer when user types
+  useEffect(() => {
+    if (input.length > 0) {
+      resetInactivityTimer();
+    }
+  }, [input]);
 
   useEffect(() => {
     const loadMessages = () => {
@@ -75,7 +125,7 @@ export function ChatInterface({ patientId, email }: ChatInterfaceProps) {
           setMessages(messagesWithDates);
           setShowWelcome(messagesWithDates.length === 0);
           const userMessages = messagesWithDates.filter(
-            (m: Message) => m.role === "user"
+            (m: Message) => m.role === "user",
           ).length;
           setQaPairCount(userMessages);
         }
@@ -116,6 +166,8 @@ export function ChatInterface({ patientId, email }: ChatInterfaceProps) {
       setConversationLoop(1);
       setShowEndMessage(false);
       setShowThankYou(false);
+      setShowInactivityPrompt(false);
+      setConversationEnded(false);
       sessionStorage.removeItem(storageKey);
       sessionStorage.removeItem(sessionStorageKey);
       const newSessionId = `session_${Date.now()}_${Math.random()
@@ -123,12 +175,10 @@ export function ChatInterface({ patientId, email }: ChatInterfaceProps) {
         .substr(2, 9)}`;
       sessionStorage.setItem(sessionStorageKey, newSessionId);
       setSessionId(newSessionId);
+      if (inactivityTimer) {
+        clearTimeout(inactivityTimer);
+      }
     }
-  };
-
-  const shouldAutoCreateSummary = (assistantMessage: string): boolean => {
-    // This function is now only used for explicit end keywords, not for triggering summaries during conversation
-    return false;
   };
 
   const createAutoSummary = async (
@@ -137,7 +187,7 @@ export function ChatInterface({ patientId, email }: ChatInterfaceProps) {
       content: string;
       timestamp: string;
     }>,
-    agentType: string
+    agentType: string,
   ) => {
     try {
       console.log("[v0] ===== CREATING SUMMARY =====");
@@ -172,7 +222,7 @@ export function ChatInterface({ patientId, email }: ChatInterfaceProps) {
       };
 
       console.log(
-        "[v0] Sending POST request to /api/communications/summary..."
+        "[v0] Sending POST request to /api/communications/summary...",
       );
       console.log("[v0] Request body:", JSON.stringify(requestBody, null, 2));
 
@@ -185,20 +235,20 @@ export function ChatInterface({ patientId, email }: ChatInterfaceProps) {
       console.log(
         "[v0] Response status:",
         response.status,
-        response.statusText
+        response.statusText,
       );
 
       if (response.ok) {
         const data = await response.json();
         console.log(
-          "[v0] ✓ Summary created and stored in chat_history successfully!"
+          "[v0] ✓ Summary created and stored in chat_history successfully!",
         );
         console.log("[v0] Response data:", data);
       } else {
         const errorText = await response.text();
         console.error(
           "[v0] ✗ Failed to create summary - Status:",
-          response.status
+          response.status,
         );
         console.error("[v0] Error response:", errorText);
       }
@@ -217,9 +267,13 @@ export function ChatInterface({ patientId, email }: ChatInterfaceProps) {
     console.log("[v0] Session ID:", sessionId);
 
     setShowCheckpoint(false);
+    setShowInactivityPrompt(false);
+    if (inactivityTimer) {
+      clearTimeout(inactivityTimer);
+    }
 
     const allSessionMessages = messages.filter(
-      (msg) => msg.role === "user" || msg.role === "assistant"
+      (msg) => msg.role === "user" || msg.role === "assistant",
     );
 
     console.log("[v0] Filtered session messages:", allSessionMessages.length);
@@ -245,12 +299,7 @@ export function ChatInterface({ patientId, email }: ChatInterfaceProps) {
     console.log(
       "[v0] Prepared",
       messagesToSummarize.length,
-      "messages for summary"
-    );
-    console.log("[v0] First message:", messagesToSummarize[0]);
-    console.log(
-      "[v0] Last message:",
-      messagesToSummarize[messagesToSummarize.length - 1]
+      "messages for summary",
     );
 
     const summaryMessage: Message = {
@@ -274,9 +323,12 @@ export function ChatInterface({ patientId, email }: ChatInterfaceProps) {
   const handleCheckpointContinue = () => {
     console.log("[v0] User chose to continue conversation");
     setShowCheckpoint(false);
+    setShowInactivityPrompt(false);
     setConversationLoop(conversationLoop + 1);
     setQaPairCount(0); // Reset Q/A pair count for the new loop
     setCurrentLoopStartIndex(messages.length);
+    setCheckpointType("regular"); // Reset to regular for next checkpoint
+    resetInactivityTimer(); // Restart inactivity timer
     console.log("[v0] Starting new loop:", {
       newLoop: conversationLoop + 1,
       newStartIndex: messages.length,
@@ -286,15 +338,74 @@ export function ChatInterface({ patientId, email }: ChatInterfaceProps) {
   const handleCheckpointEnd = async () => {
     console.log("[v0] User chose to end conversation at checkpoint");
     setShowCheckpoint(false);
+    setShowInactivityPrompt(false);
     await handleEndConversation();
+  };
+
+  const handleInactivityResponse = async (shouldEnd: boolean) => {
+    if (shouldEnd) {
+      await handleCheckpointEnd();
+    } else {
+      setShowInactivityPrompt(false);
+      resetInactivityTimer();
+    }
   };
 
   const handleSendMessage = async () => {
     if (!input.trim()) return;
 
-    if (showCheckpoint) return;
-
     const currentInput = input;
+
+    // Check if user is responding to checkpoint/inactivity with "yes" or summary keywords
+    if (showCheckpoint || showInactivityPrompt) {
+      const affirmativeKeywords = [
+        "yes",
+        "yeah",
+        "yep",
+        "sure",
+        "ok",
+        "okay",
+        "create summary",
+        "end session",
+        "end conversation",
+        "finish",
+        "done",
+      ];
+
+      const isAffirmativeForEnd = affirmativeKeywords.some(
+        (keyword) =>
+          currentInput.toLowerCase().trim() === keyword ||
+          currentInput.toLowerCase().includes(keyword),
+      );
+
+      if (isAffirmativeForEnd) {
+        console.log(
+          "[v0] User confirmed end session at checkpoint/inactivity prompt",
+        );
+        setInput("");
+
+        const userMessage: Message = {
+          role: "user",
+          content: currentInput,
+          timestamp: new Date(),
+        };
+        setMessages([...messages, userMessage]);
+
+        await handleEndConversation();
+        return;
+      }
+
+      // If they typed something else at checkpoint, treat as "continue"
+      if (showCheckpoint) {
+        console.log("[v0] User wants to continue from checkpoint");
+        handleCheckpointContinue();
+        // Don't return - let the message be processed normally below
+      } else if (showInactivityPrompt) {
+        console.log("[v0] User active again after inactivity");
+        handleInactivityResponse(false);
+        // Don't return - let the message be processed normally below
+      }
+    }
 
     const endConversationKeywords = [
       "end conversation",
@@ -314,17 +425,19 @@ export function ChatInterface({ patientId, email }: ChatInterfaceProps) {
       "finish",
       "done",
       "endconversation",
+      "yes end",
+      "yes, end",
     ];
 
     const isEndingConversation = endConversationKeywords.some(
       (keyword) =>
         currentInput.toLowerCase().trim() === keyword ||
-        currentInput.toLowerCase().includes(keyword)
+        currentInput.toLowerCase().includes(keyword),
     );
 
     if (isEndingConversation && messages.length > 0) {
       console.log(
-        "[v0] User typed end conversation keyword, creating summary and storing in chat_history..."
+        "[v0] User typed end conversation keyword, creating summary and storing in chat_history...",
       );
       setInput("");
 
@@ -351,6 +464,9 @@ export function ChatInterface({ patientId, email }: ChatInterfaceProps) {
 
     const newMessages = [...messages, userMessage];
     setMessages(newMessages);
+
+    // Reset inactivity timer after user sends message
+    resetInactivityTimer();
 
     try {
       const newQAPairCount = qaPairCount + 1;
@@ -395,7 +511,7 @@ export function ChatInterface({ patientId, email }: ChatInterfaceProps) {
 
       if (data.shouldEndConversation) {
         console.log(
-          "[v0] Backend detected end conversation, triggering summary..."
+          "[v0] Backend detected end conversation, triggering summary...",
         );
         setMessages([
           ...newMessages,
@@ -417,10 +533,18 @@ export function ChatInterface({ patientId, email }: ChatInterfaceProps) {
         console.log(
           "[v0] Backend triggered checkpoint at",
           newQAPairCount,
-          "Q/A pairs"
+          "Q/A pairs",
         );
         // Update the Q/A count since this exchange is complete
         setQaPairCount(newQAPairCount);
+
+        // Determine checkpoint type based on conversation loop
+        if (conversationLoop === 1) {
+          setCheckpointType("regular"); // First checkpoint at 6 Q&A
+        } else {
+          setCheckpointType("extended"); // Extended checkpoint at 3 Q&A
+        }
+
         setLoading(false);
         // Show checkpoint dialog after brief delay
         setTimeout(() => {
@@ -471,12 +595,15 @@ export function ChatInterface({ patientId, email }: ChatInterfaceProps) {
       }
 
       setLoading(false);
+      // Reset inactivity timer after receiving response
+      resetInactivityTimer();
     } catch (error) {
       console.error("Chat error:", error);
       setError(
-        error instanceof Error ? error.message : "Failed to send message"
+        error instanceof Error ? error.message : "Failed to send message",
       );
       setLoading(false);
+      resetInactivityTimer();
     }
   };
 
@@ -494,7 +621,10 @@ export function ChatInterface({ patientId, email }: ChatInterfaceProps) {
             {sessionId && (
               <p className="text-xs text-gray-400 mt-1">
                 Session: {sessionId.substring(0, 12)}... | Loop:{" "}
-                {conversationLoop} | Q/A Pairs: {qaPairCount}/7
+                {conversationLoop} | Q/A Pairs: {qaPairCount}/
+                {conversationLoop === 1
+                  ? INITIAL_CHECKPOINT
+                  : EXTENDED_CHECKPOINT}
               </p>
             )}
           </div>
@@ -544,37 +674,45 @@ export function ChatInterface({ patientId, email }: ChatInterfaceProps) {
                 <li>• Conversation history summaries</li>
               </ul>
               <p className="text-xs text-gray-500 mt-3">
-                After 7 Q/A exchanges per loop, you'll be asked if you need more
-                information. A summary will be created and sent to your
+                After {INITIAL_CHECKPOINT} Q/A exchanges, you'll be asked if you
+                need more information. If you continue, after{" "}
+                {EXTENDED_CHECKPOINT} more exchanges you'll be asked again.
+                After 20 seconds of inactivity, I'll also check if you'd like to
+                end the session. A summary will be created and sent to your
                 Communications tab when you end the conversation.
               </p>
             </div>
           </div>
         )}
 
-        {showCheckpoint && (
+        {/* Regular Checkpoint Prompt */}
+        {showCheckpoint && checkpointType === "regular" && (
           <div className="bg-blue-50 border border-blue-300 rounded-lg p-4 flex flex-col gap-4">
             <div className="flex items-start gap-3">
               <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
               <div>
                 <p className="text-sm font-semibold text-blue-900">
-                  Conversation Checkpoint
+                  Conversation Checkpoint - {INITIAL_CHECKPOINT} Questions
+                  Completed
                 </p>
                 <p className="text-sm text-blue-800 mt-2">
-                  I have enough information from the {qaPairCount} questions
-                  we've discussed. Would you like to:
+                  I have gathered information from {qaPairCount} questions.
+                  Would you like to:
                 </p>
                 <ul className="text-sm text-blue-800 space-y-1 mt-2 ml-2">
                   <li>
                     • <strong>Continue:</strong> Provide additional information
-                    (7 more questions)
+                    ({EXTENDED_CHECKPOINT} more questions)
                   </li>
                   <li>
-                    • <strong>End Conversation:</strong> or End Session by type
-                    "end conversation" I'll create a summary and send it to your
-                    doctor
+                    • <strong>End Session:</strong> I'll create a summary and
+                    send it to your doctor
                   </li>
                 </ul>
+                <p className="text-xs text-blue-700 mt-3 font-medium">
+                  💬 You can click a button below or type "yes" to end session
+                  or "no" to continue
+                </p>
               </div>
             </div>
             <div className="flex gap-3">
@@ -582,14 +720,112 @@ export function ChatInterface({ patientId, email }: ChatInterfaceProps) {
                 onClick={handleCheckpointContinue}
                 className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
               >
-                Continue (7 more questions)
+                Continue ({EXTENDED_CHECKPOINT} more questions)
               </Button>
               <Button
                 onClick={handleCheckpointEnd}
                 variant="outline"
                 className="flex-1 border-blue-300 text-blue-600 hover:bg-blue-100 bg-transparent"
               >
-                End Conversation
+                End Session & Create Summary
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* Extended Checkpoint Prompt */}
+        {showCheckpoint && checkpointType === "extended" && (
+          <div className="bg-orange-50 border border-orange-300 rounded-lg p-4 flex flex-col gap-4">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-orange-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-semibold text-orange-900">
+                  Extended Session Checkpoint
+                </p>
+                <p className="text-sm text-orange-800 mt-2">
+                  You've provided {EXTENDED_CHECKPOINT} additional questions. To
+                  ensure we have comprehensive information:
+                </p>
+                <ul className="text-sm text-orange-800 space-y-1 mt-2 ml-2">
+                  <li>
+                    • <strong>Continue:</strong> Provide more details (
+                    {EXTENDED_CHECKPOINT} more questions)
+                  </li>
+                  <li>
+                    • <strong>End Session:</strong> Create summary with all
+                    information gathered
+                  </li>
+                </ul>
+                <p className="text-xs text-orange-700 mt-2">
+                  Recommended: End session to allow your doctor to review the
+                  comprehensive information already collected.
+                </p>
+                <p className="text-xs text-orange-700 mt-2 font-medium">
+                  💬 You can click a button below or type "yes" to end session
+                  or "no" to continue
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <Button
+                onClick={handleCheckpointContinue}
+                variant="outline"
+                className="flex-1 border-orange-300 text-orange-600 hover:bg-orange-100 bg-transparent"
+              >
+                Continue ({EXTENDED_CHECKPOINT} more questions)
+              </Button>
+              <Button
+                onClick={handleCheckpointEnd}
+                className="flex-1 bg-orange-600 hover:bg-orange-700 text-white"
+              >
+                End Session & Create Summary
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* Inactivity Prompt */}
+        {showInactivityPrompt && (
+          <div className="bg-yellow-50 border border-yellow-300 rounded-lg p-4 flex flex-col gap-4">
+            <div className="flex items-start gap-3">
+              <Clock className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-semibold text-yellow-900">
+                  Are You Still There?
+                </p>
+                <p className="text-sm text-yellow-800 mt-2">
+                  I noticed you haven't sent a message for a while. Would you
+                  like to:
+                </p>
+                <ul className="text-sm text-yellow-800 space-y-1 mt-2 ml-2">
+                  <li>
+                    • <strong>Continue:</strong> Keep chatting and providing
+                    information
+                  </li>
+                  <li>
+                    • <strong>End Session:</strong> Create a summary and send it
+                    to your doctor
+                  </li>
+                </ul>
+                <p className="text-xs text-yellow-700 mt-3 font-medium">
+                  💬 You can click a button below or type "yes" to end session
+                  or "no" to continue
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <Button
+                onClick={() => handleInactivityResponse(false)}
+                className="flex-1 bg-yellow-600 hover:bg-yellow-700 text-white"
+              >
+                Continue Chatting
+              </Button>
+              <Button
+                onClick={() => handleInactivityResponse(true)}
+                variant="outline"
+                className="flex-1 border-yellow-300 text-yellow-600 hover:bg-yellow-100 bg-transparent"
+              >
+                End Session & Create Summary
               </Button>
             </div>
           </div>
@@ -698,26 +934,18 @@ export function ChatInterface({ patientId, email }: ChatInterfaceProps) {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder={
-            showCheckpoint
-              ? "Please select an option above..."
+            showCheckpoint || showInactivityPrompt
+              ? "Type 'yes' to end session or 'no' to continue..."
               : "Type your health question..."
           }
-          onKeyPress={(e) =>
-            e.key === "Enter" && !showCheckpoint && handleSendMessage()
-          }
-          disabled={
-            loading || showCheckpoint || showEndMessage || conversationEnded
-          }
+          onKeyPress={(e) => e.key === "Enter" && handleSendMessage()}
+          disabled={loading || showEndMessage || conversationEnded}
           className="flex-1"
         />
         <Button
           onClick={handleSendMessage}
           disabled={
-            loading ||
-            !input.trim() ||
-            showCheckpoint ||
-            showEndMessage ||
-            conversationEnded
+            loading || !input.trim() || showEndMessage || conversationEnded
           }
           className="bg-blue-600 hover:bg-blue-700"
         >

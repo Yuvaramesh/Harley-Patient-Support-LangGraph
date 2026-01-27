@@ -1,5 +1,5 @@
 // lib/agents/clinical-agent.ts
-// COMPLETE FILE WITH EMERGENCY PROTOCOL UPDATED TO STANDARDIZED FORMAT
+// UPDATED: Revised checkpoint logic - 6 Q&A pairs first, then 3 Q&A pairs for extended sessions
 
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import type { ChatState } from "../types";
@@ -8,6 +8,9 @@ import { locationAgent } from "./location-agent";
 
 const genai = new GoogleGenerativeAI(process.env.NEXT_PUBLIC_GEMINI_API_KEY!);
 const model = genai.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
+
+const INITIAL_CHECKPOINT = 6; // First checkpoint at 6 Q&A pairs
+const EXTENDED_CHECKPOINT = 3; // Extended checkpoint at 3 more Q&A pairs
 
 /**
  * Remove markdown formatting from text
@@ -30,27 +33,37 @@ function cleanMarkdown(text: string): string {
 }
 
 /**
- * Check if enough information has been gathered
+ * Determine checkpoint thresholds based on conversation state
+ * Returns true if we've hit a checkpoint
  */
-function hasEnoughInformation(qaPairCount: number): boolean {
-  console.log("[Clinical Agent] Q/A pair check:", {
-    qaPairCount,
-    readyForSummary: false,
-  });
+function shouldShowCheckpoint(
+  qaPairCount: number,
+  sessionId?: string,
+): boolean {
+  // Store conversation loop state in memory (could be enhanced with actual state management)
+  const conversationLoop =
+    Math.floor((qaPairCount - 1) / INITIAL_CHECKPOINT) + 1;
 
-  return false;
-}
+  let shouldShow = false;
 
-/**
- * Check if we've reached 6 Q/A pairs and should ask user to continue or end
- */
-function shouldShowCheckpoint(qaPairCount: number): boolean {
-  const shouldShow = qaPairCount > 0 && qaPairCount % 6 === 0;
+  if (conversationLoop === 1) {
+    // First loop: checkpoint at 6 Q&A pairs
+    shouldShow = qaPairCount === INITIAL_CHECKPOINT;
+  } else {
+    // Extended loops: checkpoint every 3 Q&A pairs after the initial 6
+    const pairsAfterInitial = qaPairCount - INITIAL_CHECKPOINT;
+    shouldShow =
+      pairsAfterInitial > 0 && pairsAfterInitial % EXTENDED_CHECKPOINT === 0;
+  }
 
   console.log("[Clinical Agent] Checkpoint check:", {
     qaPairCount,
+    conversationLoop,
     shouldShow,
-    calculation: `${qaPairCount} % 6 = ${qaPairCount % 6}`,
+    calculation:
+      conversationLoop === 1
+        ? `${qaPairCount} === ${INITIAL_CHECKPOINT}`
+        : `(${qaPairCount} - ${INITIAL_CHECKPOINT}) % ${EXTENDED_CHECKPOINT} = ${(qaPairCount - INITIAL_CHECKPOINT) % EXTENDED_CHECKPOINT}`,
   });
 
   return shouldShow;
@@ -81,17 +94,30 @@ export async function clinicalAgent(state: ChatState): Promise<{
   isSummaryResponse?: boolean;
   isCheckpoint?: boolean;
 }> {
-  const isCheckpointMoment = shouldShowCheckpoint(state.qaPairCount || 0);
+  const isCheckpointMoment = shouldShowCheckpoint(
+    state.qaPairCount || 0,
+    state.sessionId,
+  );
 
   if (isCheckpointMoment) {
+    const conversationLoop =
+      Math.floor(((state.qaPairCount || 0) - 1) / INITIAL_CHECKPOINT) + 1;
+    const isFirstCheckpoint = conversationLoop === 1;
+
     console.log(
       "[Clinical Agent] Reached checkpoint at",
       state.qaPairCount,
-      "Q/A pairs",
+      "Q/A pairs (Loop:",
+      conversationLoop,
+      ")",
     );
+
+    const checkpointMessage = isFirstCheckpoint
+      ? `I have gathered comprehensive information from our ${INITIAL_CHECKPOINT} questions. Would you like to continue providing additional information (${EXTENDED_CHECKPOINT} more questions), or shall I create a summary and send it to your doctor?`
+      : `You've provided ${EXTENDED_CHECKPOINT} more questions worth of information. Would you like to continue (${EXTENDED_CHECKPOINT} more questions), or shall I create a comprehensive summary now?`;
+
     return {
-      answer:
-        "I have enough information from our conversation so far. Would you like to continue providing additional information, or would you like me to create a summary and send it to your doctor? type end conversation",
+      answer: checkpointMessage,
       severity: "medium",
       needsSummary: false,
       isSummaryResponse: false,
@@ -176,7 +202,7 @@ SEVERITY: [low/medium/high/critical based on description so far]`;
 }
 
 /**
- * UPDATED: Emergency Protocol returns standardized format with answer and severity only
+ * Emergency Protocol returns standardized format with answer and severity only
  */
 export async function emergencyProtocol(state: ChatState): Promise<{
   answer: string;
