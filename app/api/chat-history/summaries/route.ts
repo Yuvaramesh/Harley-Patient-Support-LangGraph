@@ -11,18 +11,24 @@ const model = genai.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const patientId = searchParams.get("patientId");
+    const tempPatientId = searchParams.get("patientId");
     const userRole = searchParams.get("userRole");
     const communicationType = searchParams.get("type");
 
-    if (!patientId) {
+    if (!tempPatientId) {
       return NextResponse.json(
         { error: "patientId is required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
     const chatHistoryCollection = await getCollection("chat_history");
+
+    let patientId: string | number = tempPatientId; // incoming value
+    // check numeric only
+    if (/^\d+$/.test(patientId)) {
+      patientId = Number(patientId);
+    }
 
     const query: any = {
       patientId,
@@ -61,7 +67,7 @@ export async function GET(request: NextRequest) {
         userRole,
         communicationType,
         collection: "chat_history",
-      }
+      },
     );
 
     return NextResponse.json({
@@ -77,7 +83,7 @@ export async function GET(request: NextRequest) {
         error: "Failed to fetch chat history summaries",
         details: error instanceof Error ? error.message : "Unknown error",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -87,15 +93,15 @@ export async function GET(request: NextRequest) {
  */
 async function generateSummaryWithRetry(
   conversationText: string,
-  maxRetries = 3
+  maxRetries = 3,
 ): Promise<string> {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       console.log(
-        `[Chat History API] Generating summary - Attempt ${attempt}/${maxRetries}`
+        `[Chat History API] Generating summary - Attempt ${attempt}/${maxRetries}`,
       );
       const response = await model.generateContent(
-        `Please create a concise medical summary of this patient conversation. Focus on key symptoms, concerns, and assessment. Keep it professional, structured, and factual. Do NOT provide treatment recommendations.\n\nConversation:\n${conversationText}`
+        `Please create a concise medical summary of this patient conversation. Focus on key symptoms, concerns, and assessment. Keep it professional, structured, and factual. Do NOT provide treatment recommendations.\n\nConversation:\n${conversationText}`,
       );
 
       const summary = response.response.text();
@@ -104,7 +110,7 @@ async function generateSummaryWithRetry(
     } catch (error: any) {
       console.error(
         `[Chat History API] Attempt ${attempt} failed:`,
-        error.message
+        error.message,
       );
 
       if (attempt === maxRetries) {
@@ -185,7 +191,7 @@ export async function POST(request: NextRequest) {
           success: false,
           error: "patientId is required",
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -195,7 +201,7 @@ export async function POST(request: NextRequest) {
           success: false,
           error: "messages array is required and must not be empty",
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -205,14 +211,14 @@ export async function POST(request: NextRequest) {
         messageCount: messages.length,
         sessionId,
         communicationType: communicationType || "clinical",
-      }
+      },
     );
 
     // Generate conversation text
     const conversationText = messages
       .map(
         (msg: any) =>
-          `${msg.role === "user" ? "Patient" : "Assistant"}: ${msg.content}`
+          `${msg.role === "user" ? "Patient" : "Assistant"}: ${msg.content}`,
       )
       .join("\n\n");
 
@@ -225,7 +231,7 @@ export async function POST(request: NextRequest) {
     } catch (aiError: any) {
       console.error(
         "[Chat History API] AI summary generation failed:",
-        aiError.message
+        aiError.message,
       );
       console.log("[Chat History API] Using fallback summary generation");
       summary = createFallbackSummary(messages);
@@ -270,7 +276,7 @@ export async function POST(request: NextRequest) {
         qaPairCount: summaryRecord.qaPairCount,
         summarySource,
         collection: "chat_history",
-      }
+      },
     );
 
     return NextResponse.json({
@@ -295,7 +301,7 @@ export async function POST(request: NextRequest) {
         error: "Failed to create chat history summary",
         details: error instanceof Error ? error.message : "Unknown error",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -312,6 +318,6 @@ export async function OPTIONS() {
         "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
         "Access-Control-Allow-Headers": "Content-Type",
       },
-    }
+    },
   );
 }
