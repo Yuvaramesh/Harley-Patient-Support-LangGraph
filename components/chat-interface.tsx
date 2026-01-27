@@ -706,7 +706,7 @@ export function ChatInterface({ patientId, email }: ChatInterfaceProps) {
                   </li>
                   <li>
                     • <strong>End Session:</strong> I'll create a summary and
-                    send it to your doctor
+                    send it to your doctor type "end conversation"
                   </li>
                 </ul>
                 <p className="text-xs text-blue-700 mt-3 font-medium">
