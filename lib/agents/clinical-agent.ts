@@ -42,15 +42,15 @@ function hasEnoughInformation(qaPairCount: number): boolean {
 }
 
 /**
- * Check if we've reached 7 Q/A pairs and should ask user to continue or end
+ * Check if we've reached 6 Q/A pairs and should ask user to continue or end
  */
 function shouldShowCheckpoint(qaPairCount: number): boolean {
-  const shouldShow = qaPairCount > 0 && qaPairCount % 7 === 0;
+  const shouldShow = qaPairCount > 0 && qaPairCount % 6 === 0;
 
   console.log("[Clinical Agent] Checkpoint check:", {
     qaPairCount,
     shouldShow,
-    calculation: `${qaPairCount} % 7 = ${qaPairCount % 7}`,
+    calculation: `${qaPairCount} % 6 = ${qaPairCount % 6}`,
   });
 
   return shouldShow;
@@ -91,7 +91,7 @@ export async function clinicalAgent(state: ChatState): Promise<{
     );
     return {
       answer:
-        "I have enough information from our conversation so far. Would you like to continue providing additional information, or would you like me to create a summary and send it to your doctor?",
+        "I have enough information from our conversation so far. Would you like to continue providing additional information, or would you like me to create a summary and send it to your doctor? type end conversation",
       severity: "medium",
       needsSummary: false,
       isSummaryResponse: false,
