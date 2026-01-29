@@ -35,7 +35,7 @@ interface ChecklistGenerationResponse {
  * Generate checklist using AI based on medical summary
  */
 export async function generateAIChecklist(
-  summary: string
+  summary: string,
 ): Promise<AIChecklistItem[]> {
   if (!summary || summary.trim().length === 0) {
     console.warn("[AI Checklist] Empty summary provided");
@@ -108,7 +108,7 @@ IMPORTANT RULES:
         return await model.generateContent(prompt);
       },
       3,
-      1000
+      1000,
     );
 
     let responseText = response.response.text().trim();
@@ -120,7 +120,7 @@ IMPORTANT RULES:
 
     console.log(
       "[AI Checklist] Raw AI response:",
-      responseText.substring(0, 200)
+      responseText.substring(0, 200),
     );
 
     const parsedResponse: ChecklistGenerationResponse =
@@ -139,7 +139,7 @@ IMPORTANT RULES:
         category: item.category,
         checked: item.checked,
         importance: item.importance,
-      })
+      }),
     );
 
     // Add quality metadata items
@@ -150,7 +150,7 @@ IMPORTANT RULES:
       checklistItems.push({
         id: `ai-item-missing-${Date.now()}`,
         label: `Missing elements identified: ${parsedResponse.missingElements.join(
-          ", "
+          ", ",
         )}`,
         category: "Documentation Quality",
         checked: false,
@@ -177,7 +177,7 @@ IMPORTANT RULES:
     console.log(
       "[AI Checklist] Successfully generated",
       checklistItems.length,
-      "items"
+      "items",
     );
 
     return checklistItems;
@@ -267,7 +267,7 @@ function generateFallbackChecklist(summary: string): AIChecklistItem[] {
  * Group checklist items by category
  */
 export function groupChecklistByCategory(
-  checklist: AIChecklistItem[]
+  checklist: AIChecklistItem[],
 ): Record<string, AIChecklistItem[]> {
   const grouped: Record<string, AIChecklistItem[]> = {};
 
@@ -285,7 +285,7 @@ export function groupChecklistByCategory(
  * Calculate checklist completion percentage
  */
 export function getChecklistCompletionPercentage(
-  checklist: AIChecklistItem[]
+  checklist: AIChecklistItem[],
 ): number {
   if (checklist.length === 0) return 0;
 
@@ -313,7 +313,7 @@ export function getSummaryStatistics(summary: string) {
  * Get importance color for UI
  */
 export function getImportanceColor(
-  importance: AIChecklistItem["importance"]
+  importance: AIChecklistItem["importance"],
 ): string {
   switch (importance) {
     case "critical":

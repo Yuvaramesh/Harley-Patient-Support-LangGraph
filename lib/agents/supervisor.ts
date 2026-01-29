@@ -36,7 +36,7 @@ Examples:
         return await model.generateContent(prompt);
       },
       3,
-      1000
+      1000,
     );
 
     const text = response.response.text().toLowerCase().trim();
@@ -98,7 +98,7 @@ Does the patient need to provide more information? Respond with "yes" or "no" on
         return await model.generateContent(prompt);
       },
       2,
-      1000
+      1000,
     );
 
     return response.response.text().toLowerCase().includes("yes");
@@ -109,7 +109,7 @@ Does the patient need to provide more information? Respond with "yes" or "no" on
 }
 
 export async function extractSeverity(
-  state: ChatState
+  state: ChatState,
 ): Promise<"low" | "medium" | "high" | "critical"> {
   const prompt = `Analyze the severity of the patient's medical condition based on their query and responses.
 
@@ -124,7 +124,7 @@ Respond with ONLY one: critical, high, medium, low`;
         return await model.generateContent(prompt);
       },
       2,
-      1000
+      1000,
     );
 
     const text = response.response.text().toLowerCase().trim();

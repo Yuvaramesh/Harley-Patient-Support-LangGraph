@@ -36,7 +36,7 @@ interface ProfileData {
 
 async function fetchPatientProfile(
   patientId: string,
-  patientEmail?: string
+  patientEmail?: string,
 ): Promise<ProfileData | null> {
   try {
     const profileCollection = await getCollection("profile");
@@ -155,13 +155,13 @@ export async function POST(request: NextRequest) {
     if (!summary || !patientId) {
       return NextResponse.json(
         { error: "Summary and patientId are required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
     console.log(
       "[Profile Checklist API] Fetching profile for patient:",
-      patientId
+      patientId,
     );
 
     const profile = await fetchPatientProfile(patientId, patientEmail);
@@ -270,7 +270,7 @@ IMPORTANT:
         profileValue: item.profileValue,
         summaryValue: item.summaryValue,
         notes: item.notes,
-      })
+      }),
     );
 
     // Add metadata items
@@ -288,7 +288,7 @@ IMPORTANT:
       checklistItems.push({
         id: `meta-critical-${Date.now()}`,
         label: `Critical missing data: ${parsedResponse.criticalMissing.join(
-          ", "
+          ", ",
         )}`,
         status: "missing",
         checked: false,
@@ -301,7 +301,7 @@ IMPORTANT:
     console.log(
       "[Profile Checklist API] Generated",
       checklistItems.length,
-      "items"
+      "items",
     );
 
     return NextResponse.json({
@@ -317,7 +317,7 @@ IMPORTANT:
     console.error("[Profile Checklist API] Error:", error);
     return NextResponse.json(
       { error: "Failed to generate checklist", details: String(error) },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

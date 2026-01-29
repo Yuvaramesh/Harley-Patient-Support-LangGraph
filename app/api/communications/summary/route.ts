@@ -11,13 +11,13 @@ const model = genai.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
 
 async function generateSummaryWithRetry(
   conversationText: string,
-  maxRetries = 3
+  maxRetries = 3,
 ): Promise<string> {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       console.log(`[v0] Generating summary - Attempt ${attempt}/${maxRetries}`);
       const response = await model.generateContent(
-        `Please create a concise medical summary of this patient conversation. Focus on key symptoms, concerns, and assessment. Keep it professional, structured, and factual. Do NOT provide treatment recommendations.\n\nConversation:\n${conversationText}`
+        `Please create a concise medical summary of this patient conversation. Focus on key symptoms, concerns, and assessment. Keep it professional, structured, and factual. Do NOT provide treatment recommendations.\n\nConversation:\n${conversationText}`,
       );
 
       const summary = response.response.text();
@@ -88,7 +88,7 @@ function createFallbackSummary(messages: any[]): string {
 }
 
 async function getDoctorEmailForPatient(
-  patientId: string
+  patientId: string,
 ): Promise<string | null> {
   try {
     const patientsCollection = await getCollection("patients");
@@ -108,7 +108,7 @@ async function getDoctorEmailForPatient(
 
 async function shouldSendToPatient(
   messages: any[],
-  communicationType: string
+  communicationType: string,
 ): Promise<boolean> {
   if (communicationType === "emergency") {
     return false;
@@ -132,27 +132,27 @@ export async function POST(request: NextRequest) {
     if (!patientId || !email) {
       return NextResponse.json(
         { error: "Missing required fields: patientId and email are required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
     if (!messages || !Array.isArray(messages)) {
       return NextResponse.json(
         { error: "Missing required field: messages array is required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
     console.log(
       `[v0] Creating ${
         communicationType || "clinical"
-      } summary for patient ${patientId} with ${messages.length} messages`
+      } summary for patient ${patientId} with ${messages.length} messages`,
     );
 
     const conversationText = messages
       .map(
         (msg: any) =>
-          `${msg.role === "user" ? "Patient" : "Assistant"}: ${msg.content}`
+          `${msg.role === "user" ? "Patient" : "Assistant"}: ${msg.content}`,
       )
       .join("\n\n");
 
@@ -195,7 +195,7 @@ export async function POST(request: NextRequest) {
     };
 
     const chatHistoryResult = await chatHistoryCollection.insertOne(
-      summaryRecord as any
+      summaryRecord as any,
     );
 
     console.log(
@@ -208,13 +208,13 @@ export async function POST(request: NextRequest) {
         sentToPatient,
         collection: "chat_history",
         NOT_saved_to: "clinical_notes or communications",
-      }
+      },
     );
 
     let emailSent = false;
     if (severity === "high" || severity === "critical") {
       console.log(
-        `[v0] Emergency severity detected (${severity}), sending emergency emails`
+        `[v0] Emergency severity detected (${severity}), sending emergency emails`,
       );
 
       const doctorEmail = await getDoctorEmailForPatient(patientId);
@@ -222,7 +222,7 @@ export async function POST(request: NextRequest) {
       // Send alert to patient
       const patientAlertSent = await sendEmergencyAlert(
         email,
-        `Based on your recent conversation, our system has detected a potentially serious health concern. Please seek immediate medical attention or contact emergency services if necessary.`
+        `Based on your recent conversation, our system has detected a potentially serious health concern. Please seek immediate medical attention or contact emergency services if necessary.`,
       );
 
       // Send detailed summary to doctor
@@ -236,17 +236,17 @@ export async function POST(request: NextRequest) {
           (patient as any)?.name || "Unknown Patient",
           (patient as any)?.contact || email,
           `Patient reported symptoms that may require urgent attention. Severity level: ${severity}`,
-          summary
+          summary,
         );
       } else {
         console.warn(
-          "[v0] No doctor email found for patient, skipping doctor notification"
+          "[v0] No doctor email found for patient, skipping doctor notification",
         );
       }
 
       emailSent = patientAlertSent && doctorEmailSent;
       console.log(
-        `[v0] Emergency emails sent - Patient: ${patientAlertSent}, Doctor: ${doctorEmailSent}`
+        `[v0] Emergency emails sent - Patient: ${patientAlertSent}, Doctor: ${doctorEmailSent}`,
       );
 
       // Update chat_history record to mark emails as sent
@@ -258,7 +258,7 @@ export async function POST(request: NextRequest) {
               emailSent: true,
               emergencyEmailsSent: { doctor: true, patient: true },
             },
-          }
+          },
         );
       }
     }
@@ -284,7 +284,7 @@ export async function POST(request: NextRequest) {
         details:
           error instanceof Error ? error.message : "Unknown error occurred",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

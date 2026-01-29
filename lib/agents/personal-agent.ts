@@ -70,7 +70,7 @@ export async function personalAgent(state: ChatState): Promise<{
       "[PersonalAgent] State - email:",
       state.email,
       "patientId:",
-      state.patientId
+      state.patientId,
     );
 
     if (!state.email && !state.patientId) {
@@ -89,12 +89,12 @@ export async function personalAgent(state: ChatState): Promise<{
         state.email && state.patientId
           ? { $or: [{ email: state.email }, { patientId: state.patientId }] }
           : state.email
-          ? { email: state.email }
-          : { patientId: state.patientId };
+            ? { email: state.email }
+            : { patientId: state.patientId };
 
       console.log(
         "[PersonalAgent] Querying patients collection with filter:",
-        query_filter
+        query_filter,
       );
 
       const patientData = await patientsCollection.findOne(query_filter);
@@ -152,7 +152,7 @@ export async function personalAgent(state: ChatState): Promise<{
       response += `\nIs there anything else you'd like to know about your account?`;
 
       console.log(
-        "[PersonalAgent] Personal data response prepared successfully"
+        "[PersonalAgent] Personal data response prepared successfully",
       );
 
       return {
@@ -185,12 +185,12 @@ export async function personalAgent(state: ChatState): Promise<{
       "[PersonalAgent] State - email:",
       state.email,
       "patientId:",
-      state.patientId
+      state.patientId,
     );
 
     if (!state.email && !state.patientId) {
       console.log(
-        "[PersonalAgent] Missing both email and patientId for history"
+        "[PersonalAgent] Missing both email and patientId for history",
       );
       return {
         answer:
@@ -200,23 +200,21 @@ export async function personalAgent(state: ChatState): Promise<{
     }
 
     try {
-      const commsCollection = await getCollection<Communication>(
-        "communications"
-      );
-      const chatHistoryCollection = await getCollection<ChatHistory>(
-        "chat_history"
-      );
+      const commsCollection =
+        await getCollection<Communication>("communications");
+      const chatHistoryCollection =
+        await getCollection<ChatHistory>("chat_history");
 
       const filter =
         state.patientId && state.email
           ? { patientId: state.patientId }
           : state.patientId
-          ? { patientId: state.patientId }
-          : { patientEmail: state.email };
+            ? { patientId: state.patientId }
+            : { patientEmail: state.email };
 
       console.log(
         "[PersonalAgent] Fetching communications with filter:",
-        filter
+        filter,
       );
 
       const conversationHistory = await commsCollection
@@ -228,7 +226,7 @@ export async function personalAgent(state: ChatState): Promise<{
       console.log(
         "[PersonalAgent] Found",
         conversationHistory.length,
-        "records in communications collection"
+        "records in communications collection",
       );
 
       if (conversationHistory.length === 0) {
@@ -275,7 +273,7 @@ Requirements:
             return await model.generateContent(summaryPrompt);
           },
           3,
-          1000
+          1000,
         );
 
         const rawSummary = response.response.text();
@@ -292,13 +290,13 @@ Requirements:
         console.error("[PersonalAgent] Error generating summary:", error);
 
         const topics = Array.from(
-          new Set(conversationHistory.map((c) => c.type))
+          new Set(conversationHistory.map((c) => c.type)),
         ).join(", ");
         const firstDate = new Date(
-          conversationHistory[conversationHistory.length - 1].createdAt
+          conversationHistory[conversationHistory.length - 1].createdAt,
         ).toLocaleDateString();
         const lastDate = new Date(
-          conversationHistory[0].createdAt
+          conversationHistory[0].createdAt,
         ).toLocaleDateString();
 
         const basicSummary = `You have ${conversationHistory.length} recorded interactions with our healthcare assistant spanning from ${firstDate} to ${lastDate}. Your conversations have covered topics including ${topics}, with various health-related questions and personalized guidance provided throughout. I'm currently experiencing technical difficulties generating a detailed AI summary, but your complete conversation history has been retrieved successfully.`;
@@ -314,7 +312,7 @@ Requirements:
     } catch (error) {
       console.error(
         "[PersonalAgent] Error fetching conversation history:",
-        error
+        error,
       );
       return {
         answer:
@@ -346,7 +344,7 @@ Keep the response warm, personal, and helpful.`;
         return await model.generateContent(prompt);
       },
       3,
-      1000
+      1000,
     );
 
     const rawAnswer = response.response.text();
