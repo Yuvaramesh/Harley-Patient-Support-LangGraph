@@ -88,7 +88,7 @@ Respond with ONLY the location or "NONE":`;
         return await model.generateContent(extractLocationPrompt);
       },
       2,
-      1000
+      1000,
     );
 
     const extractedLocation = locationResponse.response.text().trim();
@@ -148,7 +148,7 @@ IMPORTANT: Write in plain text without any markdown formatting. Keep it very bri
         return await model.generateContent(responsePrompt);
       },
       3,
-      1000
+      1000,
     );
 
     const rawIntro = response.response.text();
@@ -156,8 +156,8 @@ IMPORTANT: Write in plain text without any markdown formatting. Keep it very bri
 
     // Different notes based on search type
     const closingNote = isEmergencyRoomSearch
-      ? "\n\nIMPORTANT: Please call the emergency room numbers listed above before visiting to confirm availability and services. For life-threatening emergencies, call 911 or your local emergency number immediately."
-      : "\n\nNote: This list includes hospitals, clinics, doctor offices, and pharmacies. Consider factors like ratings, distance, services offered, and whether the facility is currently open. For life-threatening emergencies, call 911 immediately.";
+      ? "\n\nIMPORTANT: Please call the emergency room numbers listed above before visiting to confirm availability and services. For life-threatening emergencies, call 999 or your local emergency number immediately."
+      : "\n\nNote: This list includes hospitals, clinics, doctor offices, and pharmacies. Consider factors like ratings, distance, services offered, and whether the facility is currently open. For life-threatening emergencies, call 999 immediately.";
 
     const finalAnswer = `${cleanIntro}\n\n${clinicInfo}${closingNote}`;
 
@@ -171,7 +171,7 @@ IMPORTANT: Write in plain text without any markdown formatting. Keep it very bri
 
     return {
       answer:
-        "I'm having trouble processing location information right now. For immediate assistance, please:\n\n1. Call your local healthcare provider\n2. Search online for '[your area] clinics'\n3. Use Google Maps to search for 'hospitals near me'\n4. In emergencies, call 911 or your local emergency number",
+        "I'm having trouble processing location information right now. For immediate assistance, please:\n\n1. Call your local healthcare provider\n2. Search online for '[your area] clinics'\n3. Use Google Maps to search for 'hospitals near me'\n4. In emergencies, call 999 or your local emergency number",
       needsLocation: false,
     };
   }

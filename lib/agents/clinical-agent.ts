@@ -233,7 +233,7 @@ export async function emergencyProtocol(state: ChatState): Promise<{
 
       if (locationResult.clinicLocations && !locationResult.needsLocation) {
         // Format location info into the answer string
-        emergencyMessage = `⚠️ EMERGENCY DETECTED\n\n${locationResult.answer}\n\nPlease call emergency services (911) immediately if this is life-threatening. Can we end the session now?`;
+        emergencyMessage = `⚠️ EMERGENCY DETECTED\n\n${locationResult.answer}\n\nPlease call emergency services (999) immediately if this is life-threatening. Can we end the session now?`;
 
         return {
           answer: emergencyMessage,
@@ -247,7 +247,7 @@ export async function emergencyProtocol(state: ChatState): Promise<{
 
   // Default emergency message without location
   emergencyMessage =
-    "⚠️ EMERGENCY DETECTED\n\nThis appears to be a medical emergency. Please:\n\n1. Call 911 or your local emergency number IMMEDIATELY\n2. If safe, provide your location so I can find nearby emergency facilities\n\nTo help you find nearby emergency services, please provide:\n• Your city/area (e.g., 'New York, NY')\n• Or say 'find emergency rooms near [your location]'\n\nI need to share your profile to your doctor. Can we end the session now? or proceed with your location details?";
+    "⚠️ EMERGENCY DETECTED\n\nThis appears to be a medical emergency. Please:\n\n1. Call 999 or your local emergency number IMMEDIATELY\n2. If safe, provide your location so I can find nearby emergency facilities\n\nTo help you find nearby emergency services, please provide:\n• Your city/area (e.g., 'New York, NY')\n• Or say 'find emergency rooms near [your location]'\n\nI need to share your profile to your doctor. Can we end the session now? or proceed with your location details?";
 
   return {
     answer: emergencyMessage,
