@@ -9,10 +9,13 @@ const genai = new GoogleGenerativeAI(process.env.NEXT_PUBLIC_GEMINI_API_KEY!);
 const model = genai.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
 
 /**
- * Generate summary using LLM with retry logic
+ * Generate summary using LLM with retry logic - UPDATED to include patient info
  */
 async function generateSummaryWithRetry(
   conversationText: string,
+  patientId: string,
+  patientEmail?: string,
+  patientName?: string,
   maxRetries = 3,
 ): Promise<string> {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
@@ -20,8 +23,31 @@ async function generateSummaryWithRetry(
       console.log(
         `[API] Generating summary - Attempt ${attempt}/${maxRetries}`,
       );
+
+      // Build patient identifier line
+      let patientInfo = `**Patient:** ${patientId}`;
+      if (patientName) {
+        patientInfo = `**Patient:** ${patientName} (ID: ${patientId})`;
+      } else if (patientEmail) {
+        patientInfo = `**Patient:** ${patientId} (${patientEmail})`;
+      }
+
       const response = await model.generateContent(
-        `Please create a concise medical summary of this patient conversation. Focus on key symptoms, concerns, and assessment. Keep it professional, structured, and factual. Do NOT provide treatment recommendations.\n\nConversation:\n${conversationText}`,
+        `Please create a concise medical summary of this patient conversation.
+
+IMPORTANT: Start the summary with this exact line:
+${patientInfo}
+
+Then structure the rest as follows:
+**Presenting Complaint:** [Main reason for visit]
+**Key Symptoms:** [Detailed symptom description including severity, timing, location]
+**Underlying Conditions:** [Any mentioned chronic conditions or diagnoses]
+**Assessment:** [Clinical evaluation and severity assessment]
+
+Focus on key symptoms, concerns, and assessment. Keep it professional, structured, and factual. Do NOT provide treatment recommendations.
+
+Conversation:
+${conversationText}`,
       );
 
       const summary = response.response.text();
@@ -44,12 +70,25 @@ async function generateSummaryWithRetry(
 }
 
 /**
- * Create fallback summary if LLM fails
+ * Create fallback summary if LLM fails - UPDATED to include patient info
  */
-function createFallbackSummary(messages: ChatMessage[]): string {
+function createFallbackSummary(
+  messages: ChatMessage[],
+  patientId: string,
+  patientEmail?: string,
+  patientName?: string,
+): string {
   if (messages.length === 0) return "No conversation data available.";
 
-  let summary = "**Conversation Summary**\n\n";
+  // Build patient identifier line
+  let patientInfo = `**Patient:** ${patientId}`;
+  if (patientName) {
+    patientInfo = `**Patient:** ${patientName} (ID: ${patientId})`;
+  } else if (patientEmail) {
+    patientInfo = `**Patient:** ${patientId} (${patientEmail})`;
+  }
+
+  let summary = `${patientInfo}\n\n**Conversation Summary**\n\n`;
   summary += `Total exchanges: ${Math.ceil(messages.length / 2)}\n\n`;
 
   const userMessages = messages.filter((m) => m.role === "user");
@@ -79,6 +118,25 @@ function createFallbackSummary(messages: ChatMessage[]): string {
     "*";
 
   return summary;
+}
+
+/**
+ * Fetch patient name from database
+ */
+async function getPatientName(
+  patientId: string,
+  email?: string,
+): Promise<string | undefined> {
+  try {
+    const patientsCollection = await getCollection("patients");
+    const patient = await patientsCollection.findOne({
+      $or: [{ patientId }, ...(email ? [{ email }] : [])],
+    });
+    return patient?.name;
+  } catch (error) {
+    console.error("[API] Error fetching patient name:", error);
+    return undefined;
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -201,15 +259,28 @@ export async function POST(request: NextRequest) {
         )
         .join("\n\n");
 
+      // Fetch patient name for summary
+      const patientName = await getPatientName(patientId, email);
+
       let summary: string;
       let summarySource = "ai_generated";
 
       try {
-        summary = await generateSummaryWithRetry(conversationText);
+        summary = await generateSummaryWithRetry(
+          conversationText,
+          patientId,
+          email,
+          patientName,
+        );
       } catch (aiError: any) {
         console.error("[API] AI summary generation failed:", aiError.message);
         console.log("[API] Using fallback summary generation");
-        summary = createFallbackSummary(fullChatHistory);
+        summary = createFallbackSummary(
+          fullChatHistory,
+          patientId,
+          email,
+          patientName,
+        );
         summarySource = "fallback";
       }
 
@@ -258,7 +329,7 @@ export async function POST(request: NextRequest) {
         agentType: "system",
         response: {
           answer:
-            "Thank you for sharing your health information with me. I've created a comprehensive summary and sent it to your doctor. They will review it and may contact you if needed. Take care!",
+            "I have successfully sent the comprehensive summary to your doctor. Thank you for your time. Goodbye!",
         },
         sessionId,
         qaPairCount,

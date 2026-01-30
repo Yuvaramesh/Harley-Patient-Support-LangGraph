@@ -113,8 +113,8 @@ export async function clinicalAgent(state: ChatState): Promise<{
     );
 
     const checkpointMessage = isFirstCheckpoint
-      ? `I have gathered comprehensive information from our ${INITIAL_CHECKPOINT} questions. Would you like to continue providing additional information (${EXTENDED_CHECKPOINT} more questions), or shall I create a summary and send it to your doctor? type "end conversation" to finish.`
-      : `You've provided ${EXTENDED_CHECKPOINT} more questions worth of information. Would you like to continue (${EXTENDED_CHECKPOINT} more questions), or shall I create a comprehensive summary now? type "end conversation" to finish.`;
+      ? `I have gathered enough information. Would you like to continue or shall I end conversation? You can answer "yes" or type "End Conversation" to finish.`
+      : `You've provided enough information. Would you like to continue or shall I end conversation? You can answer "yes" or type "End Conversation" to finish.`;
 
     return {
       answer: checkpointMessage,
@@ -233,7 +233,7 @@ export async function emergencyProtocol(state: ChatState): Promise<{
 
       if (locationResult.clinicLocations && !locationResult.needsLocation) {
         // Format location info into the answer string
-        emergencyMessage = `⚠️ EMERGENCY DETECTED\n\n${locationResult.answer}\n\nPlease call emergency services (999) immediately if this is life-threatening. Can we end the session now?`;
+        emergencyMessage = `⚠️ EMERGENCY DETECTED\n\n${locationResult.answer}\n\nPlease call emergency services (999) immediately if this is life-threatening. Can we end the session now? Type "End Conversation" to finish.`;
 
         return {
           answer: emergencyMessage,

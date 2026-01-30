@@ -89,10 +89,13 @@ export async function GET(request: NextRequest) {
 }
 
 /**
- * Generate AI summary with retry logic
+ * Generate AI summary with retry logic - UPDATED to include patient info
  */
 async function generateSummaryWithRetry(
   conversationText: string,
+  patientId: string,
+  patientEmail?: string,
+  patientName?: string,
   maxRetries = 3,
 ): Promise<string> {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
@@ -100,8 +103,31 @@ async function generateSummaryWithRetry(
       console.log(
         `[Chat History API] Generating summary - Attempt ${attempt}/${maxRetries}`,
       );
+
+      // Build patient identifier line
+      let patientInfo = `**Patient:** ${patientId}`;
+      if (patientName) {
+        patientInfo = `**Patient:** ${patientName} (ID: ${patientId})`;
+      } else if (patientEmail) {
+        patientInfo = `**Patient:** ${patientId} (${patientEmail})`;
+      }
+
       const response = await model.generateContent(
-        `Please create a concise medical summary of this patient conversation. Focus on key symptoms, concerns, and assessment. Keep it professional, structured, and factual. Do NOT provide treatment recommendations.\n\nConversation:\n${conversationText}`,
+        `Please create a concise medical summary of this patient conversation.
+
+IMPORTANT: Start the summary with this exact line:
+${patientInfo}
+
+Then structure the rest as follows:
+**Presenting Complaint:** [Main reason for visit]
+**Key Symptoms:** [Detailed symptom description including severity, timing, location]
+**Underlying Conditions:** [Any mentioned chronic conditions or diagnoses]
+**Assessment:** [Clinical evaluation and severity assessment]
+
+Focus on key symptoms, concerns, and assessment. Keep it professional, structured, and factual. Do NOT provide treatment recommendations.
+
+Conversation:
+${conversationText}`,
       );
 
       const summary = response.response.text();
@@ -127,12 +153,25 @@ async function generateSummaryWithRetry(
 }
 
 /**
- * Create fallback summary if AI fails
+ * Create fallback summary if AI fails - UPDATED to include patient info
  */
-function createFallbackSummary(messages: any[]): string {
+function createFallbackSummary(
+  messages: any[],
+  patientId: string,
+  patientEmail?: string,
+  patientName?: string,
+): string {
   if (messages.length === 0) return "No conversation data available.";
 
-  let summary = "**Conversation Summary**\n\n";
+  // Build patient identifier line
+  let patientInfo = `**Patient:** ${patientId}`;
+  if (patientName) {
+    patientInfo = `**Patient:** ${patientName} (ID: ${patientId})`;
+  } else if (patientEmail) {
+    patientInfo = `**Patient:** ${patientId} (${patientEmail})`;
+  }
+
+  let summary = `${patientInfo}\n\n**Conversation Summary**\n\n`;
   summary += `Total exchanges: ${Math.ceil(messages.length / 2)}\n\n`;
 
   const userMessages = messages.filter((m: any) => m.role === "user");
@@ -165,7 +204,26 @@ function createFallbackSummary(messages: any[]): string {
 }
 
 /**
- * POST - Create a new conversation summary
+ * Fetch patient name from database
+ */
+async function getPatientName(
+  patientId: string | number,
+  email?: string,
+): Promise<string | undefined> {
+  try {
+    const patientsCollection = await getCollection("patients");
+    const patient = await patientsCollection.findOne({
+      $or: [{ patientId }, ...(email ? [{ email }] : [])],
+    });
+    return patient?.name;
+  } catch (error) {
+    console.error("[Chat History API] Error fetching patient name:", error);
+    return undefined;
+  }
+}
+
+/**
+ * POST - Create a new conversation summary - UPDATED to include patient info
  */
 export async function POST(request: NextRequest) {
   try {
@@ -222,19 +280,32 @@ export async function POST(request: NextRequest) {
       )
       .join("\n\n");
 
-    // Generate AI summary
+    // Fetch patient name for summary
+    const patientName = await getPatientName(patientId, patientEmail);
+
+    // Generate AI summary with patient info
     let summary: string;
     let summarySource = "ai_generated";
 
     try {
-      summary = await generateSummaryWithRetry(conversationText);
+      summary = await generateSummaryWithRetry(
+        conversationText,
+        patientId,
+        patientEmail,
+        patientName,
+      );
     } catch (aiError: any) {
       console.error(
         "[Chat History API] AI summary generation failed:",
         aiError.message,
       );
       console.log("[Chat History API] Using fallback summary generation");
-      summary = createFallbackSummary(messages);
+      summary = createFallbackSummary(
+        messages,
+        patientId,
+        patientEmail,
+        patientName,
+      );
       summarySource = "fallback";
     }
 
@@ -276,6 +347,7 @@ export async function POST(request: NextRequest) {
         qaPairCount: summaryRecord.qaPairCount,
         summarySource,
         collection: "chat_history",
+        patientName: patientName || "Not found",
       },
     );
 

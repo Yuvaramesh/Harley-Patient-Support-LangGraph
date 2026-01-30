@@ -305,7 +305,7 @@ export function ChatInterface({ patientId, email }: ChatInterfaceProps) {
     const summaryMessage: Message = {
       role: "assistant",
       content:
-        "Thank you for sharing your health information with me. I've created a comprehensive summary and sent it to your doctor. They will review it and may contact you if needed. Take care!",
+        "I have successfully sent the comprehensive summary to your doctor. Thank you for your time. Goodbye!",
       timestamp: new Date(),
       agentType: "system",
     };
@@ -696,17 +696,15 @@ export function ChatInterface({ patientId, email }: ChatInterfaceProps) {
                   Completed
                 </p>
                 <p className="text-sm text-blue-800 mt-2">
-                  I have gathered information from {qaPairCount} questions.
-                  Would you like to:
+                  I have gathered enough information. Would you like to:
                 </p>
                 <ul className="text-sm text-blue-800 space-y-1 mt-2 ml-2">
                   <li>
-                    • <strong>Continue:</strong> Provide additional information
-                    ({EXTENDED_CHECKPOINT} more questions)
+                    • <strong>Continue:</strong> If you have more to share
                   </li>
                   <li>
-                    • <strong>End Session:</strong> I'll create a summary and
-                    send it to your doctor type "end conversation"
+                    • <strong>End Session:</strong> I'll end conversation type
+                    end conversation"
                   </li>
                 </ul>
                 <p className="text-xs text-blue-700 mt-3 font-medium">
