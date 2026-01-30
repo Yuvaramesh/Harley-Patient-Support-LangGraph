@@ -329,6 +329,17 @@ export function ChatInterface({ patientId, email }: ChatInterfaceProps) {
     setCurrentLoopStartIndex(messages.length);
     setCheckpointType("regular"); // Reset to regular for next checkpoint
     resetInactivityTimer(); // Restart inactivity timer
+
+    // Add encouraging message for continuation
+    const continueMessage: Message = {
+      role: "assistant",
+      content:
+        "Great! You have additional questions to share with us. Please proceed with that.",
+      timestamp: new Date(),
+      agentType: "system",
+    };
+    setMessages([...messages, continueMessage]);
+
     console.log("[v0] Starting new loop:", {
       newLoop: conversationLoop + 1,
       newStartIndex: messages.length,
@@ -347,6 +358,15 @@ export function ChatInterface({ patientId, email }: ChatInterfaceProps) {
       await handleCheckpointEnd();
     } else {
       setShowInactivityPrompt(false);
+      // Add encouraging message for continuation after inactivity
+      const continueMessage: Message = {
+        role: "assistant",
+        content:
+          "Great! You have additional questions to share with us. Please proceed with that.",
+        timestamp: new Date(),
+        agentType: "system",
+      };
+      setMessages([...messages, continueMessage]);
       resetInactivityTimer();
     }
   };
@@ -356,29 +376,47 @@ export function ChatInterface({ patientId, email }: ChatInterfaceProps) {
 
     const currentInput = input;
 
-    // Check if user is responding to checkpoint/inactivity with "yes" or summary keywords
+    // Check if user is responding to checkpoint/inactivity with "yes" or affirmative for continuing
     if (showCheckpoint || showInactivityPrompt) {
-      const affirmativeKeywords = [
+      const continueKeywords = [
         "yes",
         "yeah",
         "yep",
         "sure",
         "ok",
         "okay",
+        "continue",
+        "proceed",
+        "go ahead",
+        "keep going",
+        "no", // "no" to ending = continue
+      ];
+
+      const endKeywords = [
+        "end",
+        "finish",
+        "done",
+        "stop",
         "create summary",
         "end session",
         "end conversation",
-        "finish",
-        "done",
+        "that's all",
+        "thats all",
       ];
 
-      const isAffirmativeForEnd = affirmativeKeywords.some(
+      const isAffirmativeToContinue = continueKeywords.some(
         (keyword) =>
           currentInput.toLowerCase().trim() === keyword ||
           currentInput.toLowerCase().includes(keyword),
       );
 
-      if (isAffirmativeForEnd) {
+      const isAffirmativeToEnd = endKeywords.some(
+        (keyword) =>
+          currentInput.toLowerCase().trim() === keyword ||
+          currentInput.toLowerCase().includes(keyword),
+      );
+
+      if (isAffirmativeToEnd) {
         console.log(
           "[v0] User confirmed end session at checkpoint/inactivity prompt",
         );
@@ -395,13 +433,36 @@ export function ChatInterface({ patientId, email }: ChatInterfaceProps) {
         return;
       }
 
+      if (isAffirmativeToContinue) {
+        console.log("[v0] User wants to continue conversation");
+        setInput("");
+
+        const userMessage: Message = {
+          role: "user",
+          content: currentInput,
+          timestamp: new Date(),
+        };
+        setMessages([...messages, userMessage]);
+
+        if (showCheckpoint) {
+          handleCheckpointContinue();
+        } else if (showInactivityPrompt) {
+          handleInactivityResponse(false);
+        }
+        return;
+      }
+
       // If they typed something else at checkpoint, treat as "continue"
       if (showCheckpoint) {
-        console.log("[v0] User wants to continue from checkpoint");
+        console.log(
+          "[v0] User wants to continue from checkpoint with new question",
+        );
         handleCheckpointContinue();
         // Don't return - let the message be processed normally below
       } else if (showInactivityPrompt) {
-        console.log("[v0] User active again after inactivity");
+        console.log(
+          "[v0] User active again after inactivity with new question",
+        );
         handleInactivityResponse(false);
         // Don't return - let the message be processed normally below
       }
@@ -703,13 +764,13 @@ export function ChatInterface({ patientId, email }: ChatInterfaceProps) {
                     • <strong>Continue:</strong> If you have more to share
                   </li>
                   <li>
-                    • <strong>End Session:</strong> I'll end conversation type
-                    end conversation"
+                    • <strong>End Session:</strong> I'll create a summary and
+                    send it to your doctor
                   </li>
                 </ul>
                 <p className="text-xs text-blue-700 mt-3 font-medium">
-                  💬 You can click a button below or type "yes" to end session
-                  or "no" to continue
+                  💬 You can click a button below or type "yes" to continue or
+                  "end" to finish
                 </p>
               </div>
             </div>
@@ -759,8 +820,8 @@ export function ChatInterface({ patientId, email }: ChatInterfaceProps) {
                   comprehensive information already collected.
                 </p>
                 <p className="text-xs text-orange-700 mt-2 font-medium">
-                  💬 You can click a button below or type "yes" to end session
-                  or "no" to continue
+                  💬 You can click a button below or type "yes" to continue or
+                  "end" to finish
                 </p>
               </div>
             </div>
@@ -806,8 +867,8 @@ export function ChatInterface({ patientId, email }: ChatInterfaceProps) {
                   </li>
                 </ul>
                 <p className="text-xs text-yellow-700 mt-3 font-medium">
-                  💬 You can click a button below or type "yes" to end session
-                  or "no" to continue
+                  💬 You can click a button below or type "yes" to continue or
+                  "end" to finish
                 </p>
               </div>
             </div>
@@ -933,7 +994,7 @@ export function ChatInterface({ patientId, email }: ChatInterfaceProps) {
           onChange={(e) => setInput(e.target.value)}
           placeholder={
             showCheckpoint || showInactivityPrompt
-              ? "Type 'yes' to end session or 'no' to continue..."
+              ? "Type 'yes' to continue or 'end' to finish..."
               : "Type your health question..."
           }
           onKeyPress={(e) => e.key === "Enter" && handleSendMessage()}

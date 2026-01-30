@@ -50,8 +50,39 @@ const FAQ_DATABASE = [
 ];
 
 export async function faqAgent(state: ChatState): Promise<string> {
-  // Check local FAQ database first
-  const query = state.query.toLowerCase();
+  const query = state.query.toLowerCase().trim();
+
+  // Check for non-healthcare questions first
+  const nonHealthcarePatterns = [
+    /^\d+[\+\-\*\/]\d+$/, // Math operations
+    /^\d+[<>=]\d+$/, // Comparisons
+    /^(hi|hello|hey|greetings)$/i, // Greetings
+    /^(ok|okay|yes|no|sure)$/i, // Simple responses
+  ];
+
+  const isNonHealthcare = nonHealthcarePatterns.some((pattern) =>
+    pattern.test(query),
+  );
+
+  if (isNonHealthcare) {
+    // Detect specific types of non-healthcare questions
+    if (/^\d+[\+\-\*\/]\d+$/.test(query)) {
+      return "I can only help with general health and weight-loss related questions. For math problems, please use a calculator.";
+    }
+
+    if (/^\d+[<>=]\d+$/.test(query)) {
+      return "I can only help with general health and weight-loss related questions. For comparisons or math questions, please use appropriate tools.";
+    }
+
+    if (/^(hi|hello|hey|greetings)$/i.test(query)) {
+      return "Hello! I'm here to help with general health and weight-loss related questions. How can I assist you with your health today.";
+    }
+
+    // Default non-healthcare response
+    return "I can only help with general health and weight-loss related questions.";
+  }
+
+  // Check local FAQ database for health questions
   const faqMatch = FAQ_DATABASE.find((faq) =>
     faq.keywords.some((keyword) => query.includes(keyword)),
   );
@@ -71,7 +102,7 @@ Answer ONLY general questions related to:
 - Basic healthcare awareness
 
 Do NOT answer:
-- Non-health topics
+- Non-health topics (math, comparisons, general knowledge, greetings)
 - Coding, tech, finance, or general knowledge
 - Diagnosis or treatment plans
 - Personalized medical advice
@@ -85,7 +116,7 @@ Instructions for responses:
 - Use simple indentation for lists (no bullets)
 - Keep tone professional and easy to understand
 - Provide general educational information only
-- Always add: "For personal medical advice, consult a healthcare professional."
+"
 
 Query: "${state.query}"
 `;
