@@ -426,7 +426,18 @@ export async function POST(request: NextRequest) {
       response.personalData = result.personalData;
     }
 
-    const finalQaPairCount = qaPairCount + 1;
+    // FIX 1: Only increment qaPairCount for clinical agent responses.
+    // FAQ, personal, and emergency exchanges must NOT count toward the
+    // clinical checkpoint threshold.
+    const finalQaPairCount =
+      result.agent_type === "clinical" ? qaPairCount + 1 : qaPairCount;
+
+    console.log("[API] qaPairCount decision:", {
+      agentType: result.agent_type,
+      previousCount: qaPairCount,
+      finalCount: finalQaPairCount,
+      incremented: result.agent_type === "clinical",
+    });
 
     return NextResponse.json({
       success: true,

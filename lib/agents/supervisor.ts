@@ -6,7 +6,150 @@ import { retryWithBackoff } from "../retry-utility";
 const genai = new GoogleGenerativeAI(process.env.NEXT_PUBLIC_GEMINI_API_KEY!);
 const model = genai.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
 
+// ---------------------------------------------------------------------------
+// FIX 2: Comprehensive emergency keyword/phrase list.
+// The old list only had exact phrases like "chest pain" or "can't breathe".
+// Patients describe emergencies in dozens of ways — this covers the common
+// symptom-description patterns the LLM already understands but the hard-filter
+// was stripping out.
+// ---------------------------------------------------------------------------
+const EMERGENCY_KEYWORDS: string[] = [
+  // Breathing / respiratory
+  "can't breathe",
+  "cannot breathe",
+  "difficulty breathing",
+  "trouble breathing",
+  "hard to breathe",
+  "gasping for air",
+  "gasping",
+  "shortness of breath",
+  "out of breath",
+  "breathless",
+  "choking",
+  "suffocating",
+  "not breathing",
+  "stopped breathing",
+
+  // Chest
+  "chest pain",
+  "chest tightness",
+  "tight chest",
+  "tightness in my chest",
+  "tightness in chest",
+  "chest pressure",
+  "pressure in chest",
+  "crushing chest",
+  "squeezing chest",
+
+  // Colour / circulation changes — classic emergency indicators
+  "bluish lips",
+  "blue lips",
+  "bluish fingertips",
+  "blue fingertips",
+  "bluish skin",
+  "blue skin",
+  "pale skin",
+  "turning blue",
+  "lips turning blue",
+
+  // Cardiac
+  "heart attack",
+  "heart pain",
+  "heart stopped",
+  "irregular heartbeat",
+  "heart racing",
+  "palpitations",
+
+  // Neurological
+  "stroke",
+  "seizure",
+  "convulsions",
+  "loss of consciousness",
+  "unconscious",
+  "passed out",
+  "fainted",
+  "can't move",
+  "paralysis",
+  "sudden numbness",
+  "sudden weakness",
+  "slurred speech",
+  "can't speak",
+  "confusion",
+  "disoriented",
+
+  // Bleeding / trauma
+  "severe bleeding",
+  "uncontrolled bleeding",
+  "bleeding won't stop",
+  "heavy bleeding",
+  "blood won't stop",
+
+  // Poisoning / overdose
+  "poisoned",
+  "overdose",
+  "swallowed poison",
+  "toxic",
+
+  // Allergic
+  "severe allergic",
+  "anaphylaxis",
+  "allergic reaction",
+  "swollen throat",
+  "throat swelling",
+  "swelling of throat",
+
+  // Burns
+  "severe burn",
+  "severe burns",
+  "burning skin",
+
+  // Vomiting + breathing (the exact scenario from the screenshot)
+  "vomiting and breathing",
+  "breathing difficulty and vomiting",
+];
+
+/**
+ * Returns true if the query contains ANY emergency signal.
+ * Uses substring matching so partial phrases like "tightness in my chest"
+ * still hit "tightness in chest" or "chest tightness".
+ */
+function hasEmergencySignal(query: string): boolean {
+  const lower = query.toLowerCase();
+  return EMERGENCY_KEYWORDS.some((kw) => lower.includes(kw));
+}
+
+/**
+ * Returns true if the query is clearly non-healthcare (math, greetings, etc.)
+ */
+function isNonHealthcareQuery(query: string): boolean {
+  const trimmed = query.trim();
+  const nonHealthcarePatterns = [
+    /^\d+[\+\-\*\/]\d+$/, // Math: 1+1
+    /^\d+[<>=]\d+$/, // Comparisons: 5>6
+    /^(hi|hello|hey|greetings)$/i,
+    /^(ok|okay|yes|no|sure)$/i,
+  ];
+  return nonHealthcarePatterns.some((p) => p.test(trimmed));
+}
+
 export async function supervisorAgent(state: ChatState): Promise<string> {
+  // Fast-path: if the query is clearly non-health, skip the LLM entirely
+  if (isNonHealthcareQuery(state.query)) {
+    console.log(
+      "[Supervisor] Non-healthcare query detected (fast-path), routing to generic_faq",
+    );
+    return "generic_faq";
+  }
+
+  // Fast-path: if the query contains a known emergency signal, route immediately.
+  // This catches cases where the LLM might under-classify due to prompt ambiguity.
+  if (hasEmergencySignal(state.query)) {
+    console.log(
+      "[Supervisor] Emergency signal detected in query (fast-path), routing to emergency",
+    );
+    return "emergency";
+  }
+
   const prompt = `You are a medical triage supervisor agent. Analyze the patient's query and determine which agent should handle it.
 
 Available agents: clinical, personal, generic_faq, emergency
@@ -15,30 +158,21 @@ Patient Query: "${state.query}"
 Chat History: ${JSON.stringify(state.chat_history.slice(-3))}
 
 CRITICAL RULES FOR EMERGENCY:
-- ONLY respond with "emergency" if the query describes ACTUAL medical emergency symptoms
-- Emergency symptoms include: severe chest pain, difficulty breathing, uncontrolled bleeding, loss of consciousness, stroke symptoms, severe allergic reaction, severe burns, suspected poisoning
-- DO NOT respond with "emergency" for: math problems, comparisons (like "5>6", "3<6"), greetings, non-medical questions, or general questions
+- Respond with "emergency" if the query describes symptoms that could indicate a life-threatening condition.
+- This includes but is NOT limited to: chest pain/tightness/pressure, difficulty breathing, gasping, 
+  bluish or pale skin/lips/fingertips, severe bleeding, loss of consciousness, stroke symptoms, 
+  seizures, severe allergic reactions, poisoning, overdose, choking, heart attack symptoms.
+- Think broadly about symptom COMBINATIONS — e.g. vomiting + breathing difficulty together 
+  can signal a serious emergency even if each symptom alone would not.
+- DO NOT respond with "emergency" for: math problems, comparisons, greetings, non-medical questions.
 
 RULES FOR OTHER AGENTS:
-- If query is about personal information, conversation history, past discussions, account summary, or retrieving previous conversations, respond with "personal"
-- If query asks general health questions, lifestyle, symptoms, or medical concerns that are NOT emergencies, respond with "clinical"
-- If query is FAQ-like (how does medication work, what is diabetes, general health info), respond with "generic_faq"
-- If query is completely unrelated to health (math, greetings, general knowledge, comparisons, etc.), respond with "generic_faq"
+- "personal"     → queries about personal info, conversation history, past discussions, account summary
+- "clinical"     → health questions / symptom descriptions that are NOT emergencies
+- "generic_faq"  → FAQ-like health questions (what is diabetes, how does medication work) 
+                    OR completely non-health topics (math, greetings, general knowledge)
 
-Respond with ONLY one of these in lowercase: clinical, personal, generic_faq, emergency
-
-Examples:
-- "Can I get my previous conversation summary?" -> personal
-- "Show me my conversation history" -> personal
-- "What did we discuss last time?" -> personal
-- "I have a headache" -> clinical
-- "What is diabetes?" -> generic_faq
-- "Hello" or "Hi" -> generic_faq
-- "1+1" or "2+2" or "5>6" or "3<6" -> generic_faq
-- "Severe chest pain and can't breathe" -> emergency
-- "I'm having a heart attack" -> emergency
-- "I can't breathe at all" -> emergency
-- "Uncontrolled bleeding won't stop" -> emergency`;
+Respond with ONLY one of these in lowercase: clinical, personal, generic_faq, emergency`;
 
   try {
     const response = await retryWithBackoff(
@@ -51,64 +185,18 @@ Examples:
 
     const text = response.response.text().toLowerCase().trim();
 
-    // Validate response
+    // Validate response is one of the known agent types
     const validAgents = ["clinical", "personal", "generic_faq", "emergency"];
-    const agentType = validAgents.includes(text) ? text : "clinical";
+    let agentType = validAgents.includes(text) ? text : "clinical";
 
-    // Additional validation: check if the query is actually health-related
-    const query = state.query.toLowerCase().trim();
-
-    // List of non-healthcare patterns
-    const nonHealthcarePatterns = [
-      /^\d+[\+\-\*\/]\d+$/, // Math operations: 1+1, 2*2, etc.
-      /^\d+[<>=]\d+$/, // Comparisons: 5>6, 3<6, 2=2, etc.
-      /^(hi|hello|hey|greetings)$/i, // Simple greetings
-      /^(ok|okay|yes|no|sure)$/i, // Simple responses
-    ];
-
-    // Check if query matches non-healthcare patterns
-    const isNonHealthcare = nonHealthcarePatterns.some((pattern) =>
-      pattern.test(query),
-    );
-
-    // If it's marked as emergency but the query is clearly non-healthcare, downgrade to generic_faq
-    if (agentType === "emergency" && isNonHealthcare) {
+    // Safety guard: if LLM says "emergency" but query is clearly non-health, downgrade.
+    // This is the ONLY downgrade we allow. We do NOT downgrade emergency → generic_faq
+    // just because a keyword is missing — the LLM already understood the context.
+    if (agentType === "emergency" && isNonHealthcareQuery(state.query)) {
       console.log(
-        "[Supervisor] Non-healthcare query detected, routing to generic_faq instead of emergency",
+        "[Supervisor] LLM said emergency but query is clearly non-health, downgrading to generic_faq",
       );
-      return "generic_faq";
-    }
-
-    // Additional safety check: emergency should only trigger for actual medical emergencies
-    if (agentType === "emergency") {
-      const emergencyKeywords = [
-        "chest pain",
-        "can't breathe",
-        "cannot breathe",
-        "difficulty breathing",
-        "severe bleeding",
-        "unconscious",
-        "heart attack",
-        "stroke",
-        "severe burn",
-        "poisoned",
-        "overdose",
-        "severe allergic",
-        "anaphylaxis",
-        "choking",
-        "seizure",
-      ];
-
-      const hasEmergencyKeyword = emergencyKeywords.some((keyword) =>
-        query.includes(keyword),
-      );
-
-      if (!hasEmergencyKeyword) {
-        console.log(
-          "[Supervisor] No actual emergency keywords found, routing to generic_faq",
-        );
-        return "generic_faq";
-      }
+      agentType = "generic_faq";
     }
 
     console.log(`[Supervisor] Routing query "${state.query}" to: ${agentType}`);
@@ -116,37 +204,14 @@ Examples:
   } catch (error) {
     console.error("Supervisor agent error after retries:", error);
 
-    // Fallback: Use keyword matching as backup
+    // ---- Fallback routing (no LLM available) ----
     const query = state.query.toLowerCase().trim();
 
-    // Check for non-healthcare patterns first
-    const nonHealthcarePatterns = [
-      /^\d+[\+\-\*\/]\d+$/,
-      /^\d+[<>=]\d+$/,
-      /^(hi|hello|hey|greetings)$/i,
-      /^(ok|okay|yes|no|sure)$/i,
-    ];
-
-    if (nonHealthcarePatterns.some((pattern) => pattern.test(query))) {
+    if (isNonHealthcareQuery(query)) {
       return "generic_faq";
     }
 
-    // Check for actual emergencies with strict keywords
-    const strictEmergencyKeywords = [
-      "chest pain",
-      "can't breathe",
-      "cannot breathe",
-      "difficulty breathing",
-      "severe bleeding",
-      "unconscious",
-      "heart attack",
-      "stroke",
-      "severe burn",
-      "poisoned",
-      "overdose",
-    ];
-
-    if (strictEmergencyKeywords.some((keyword) => query.includes(keyword))) {
+    if (hasEmergencySignal(query)) {
       return "emergency";
     }
 
@@ -169,8 +234,8 @@ Examples:
       return "generic_faq";
     }
 
-    // Default to generic_faq for non-healthcare questions
-    return "generic_faq";
+    // Default to clinical for anything health-sounding
+    return "clinical";
   }
 }
 
@@ -193,7 +258,7 @@ Does the patient need to provide more information? Respond with "yes" or "no" on
     return response.response.text().toLowerCase().includes("yes");
   } catch (error) {
     console.error("Follow-up check error:", error);
-    return false; // Default to not asking follow-up if API fails
+    return false;
   }
 }
 
@@ -220,7 +285,6 @@ Respond with ONLY one: critical, high, medium, low`;
 
     const text = response.response.text().toLowerCase().trim();
 
-    // Validate and return proper type
     const validSeverities: Array<"low" | "medium" | "high" | "critical"> = [
       "critical",
       "high",
@@ -236,26 +300,18 @@ Respond with ONLY one: critical, high, medium, low`;
   } catch (error) {
     console.error("Severity extraction error:", error);
 
-    // Fallback: Use keyword matching
     const query = state.query.toLowerCase();
 
-    // Check for non-healthcare patterns
-    const nonHealthcarePatterns = [
-      /^\d+[\+\-\*\/]\d+$/,
-      /^\d+[<>=]\d+$/,
-      /^(hi|hello|hey)$/i,
-    ];
-
-    if (nonHealthcarePatterns.some((pattern) => pattern.test(query))) {
+    if (isNonHealthcareQuery(query)) {
       return "low";
     }
 
-    if (
-      query.includes("emergency") ||
-      query.includes("severe") ||
-      query.includes("critical") ||
-      query.includes("urgent")
-    ) {
+    // Use the same comprehensive check for emergency severity
+    if (hasEmergencySignal(query)) {
+      return "critical";
+    }
+
+    if (query.includes("severe") || query.includes("urgent")) {
       return "high";
     }
 

@@ -34,7 +34,7 @@ interface ChatInterfaceProps {
 
 const INACTIVITY_TIMEOUT = 20000; // 20 seconds
 const INITIAL_CHECKPOINT = 6; // First checkpoint at 6 Q&A pairs
-const EXTENDED_CHECKPOINT = 3; // Extended checkpoint at 3 more Q&A pairs
+const EXTENDED_CHECKPOINT = 6; // Extended checkpoint at 3 more Q&A pairs
 
 export function ChatInterface({ patientId, email }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -596,8 +596,10 @@ export function ChatInterface({ patientId, email }: ChatInterfaceProps) {
           newQAPairCount,
           "Q/A pairs",
         );
-        // Update the Q/A count since this exchange is complete
-        setQaPairCount(newQAPairCount);
+        // Only update Q/A count for clinical checkpoints
+        if (data.agentType === "clinical") {
+          setQaPairCount(newQAPairCount);
+        }
 
         // Determine checkpoint type based on conversation loop
         if (conversationLoop === 1) {
@@ -643,15 +645,26 @@ export function ChatInterface({ patientId, email }: ChatInterfaceProps) {
       if (assistantMessage) {
         const finalMessages = [...newMessages, assistantMessage];
         setMessages(finalMessages);
-
+        // FIX 1 (client side): Only clinical exchanges count toward checkpoint.
+        // The server already enforces this, but we mirror it here so the
+        // displayed "Q/A Pairs: X/6" counter stays accurate.
         if (data.agentType === "clinical") {
           setQaPairCount(newQAPairCount);
-
-          console.log("[v0] Q/A pair count updated:", {
+          console.log("[v0] Q/A pair count updated (clinical only):", {
             previousCount: qaPairCount,
             newCount: newQAPairCount,
             conversationLoop,
           });
+        } else {
+          console.log(
+            "[v0] Q/A pair count NOT incremented (agent: " +
+              data.agentType +
+              "):",
+            {
+              currentCount: qaPairCount,
+              conversationLoop,
+            },
+          );
         }
       }
 

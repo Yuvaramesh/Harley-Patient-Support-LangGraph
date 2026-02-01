@@ -10,7 +10,7 @@ const genai = new GoogleGenerativeAI(process.env.NEXT_PUBLIC_GEMINI_API_KEY!);
 const model = genai.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
 
 const INITIAL_CHECKPOINT = 6; // First checkpoint at 6 Q&A pairs
-const EXTENDED_CHECKPOINT = 3; // Extended checkpoint at 3 more Q&A pairs
+const EXTENDED_CHECKPOINT = 6; // Extended checkpoint at 3 more Q&A pairs
 
 /**
  * Remove markdown formatting from text
